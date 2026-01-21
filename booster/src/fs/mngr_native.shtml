@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title><!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 0.5rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-row label {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .helper-text {
+            font-weight: 400;
+            color: #555;
+            font-size: 0.95rem;
+            display: block;
+            margin-top: 0.15rem;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .form-actions button {
+            border: 1px solid #0078e7;
+            background: #0078e7;
+            color: #fff;
+            border-radius: 6px;
+            padding: 0.65rem 1rem;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .form-actions button:last-of-type {
+            background: #fff;
+            color: #0078e7;
+        }
+
+        .form-actions button:hover {
+            opacity: 0.92;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 54px;
+            height: 28px;
+            justify-self: end;
+        }
+
+        .toggle-switch .toggle-input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .toggle-switch .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 999px;
+        }
+
+        .toggle-switch .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+
+        .toggle-switch .toggle-input:checked+.toggle-slider {
+            background-color: #0c9e6c;
+        }
+
+        .toggle-switch .toggle-input:checked+.toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        @media (max-width: 700px) {
+            .form-row {
+                grid-template-columns: 1fr;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <nav class="nav-bar" aria-label="Breadcrumb">
+        <ul class="nav-list">
+            <li class="nav-item">
+                <a class="nav-link" href="/mngr_home.shtml">Home</a>
+            </li>
+            <li class="nav-item active">
+                <span class="nav-link" aria-current="page">Native Configuration</span>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        <section class="content" id="native-setup">
+            <h2>Passthrough Keyboard Configuration</h2>
+            <p>Enable IKBD passthrough so the original Atari keyboard is used.</p>
+            <div class="banner banner-warning">
+                <span class="banner-icon" aria-hidden="true">!</span>
+                <span>Please click "Save settings" to persist any changes you make on this page.</span>
+            </div>
+
+            <div id="native-status" class="banner banner-info" role="status" style="display: none;"></div>
+
+            <form id="native-config-form">
+                <div class="form-row">
+                    <label for="native-mode">
+                        <strong>Activate passthrough mode</strong>
+                        <div class="helper-text">Set IKBD to passthrough so the adapter uses the original keyboard,
+                            mouse and joysticks.</div>
+                    </label>
+                    <label class="toggle-switch" for="native-mode" aria-label="Activate native mode">
+                        <input type="checkbox" class="toggle-input" id="native-mode" name="native-mode">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="save-native-config" class="btn">Save settings</button>
+                    <button type="button" id="reset-native-config" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+
+    <script>
+        (function () {
+            var statusBox = document.getElementById("native-status");
+            var modeCheckbox = document.getElementById("native-mode");
+            var initialState = {
+                mode: parseInt("<!--#MODE-->", 10) || 0
+            };
+
+            function applyState(state) {
+                if (modeCheckbox) {
+                    modeCheckbox.checked = state.mode === 0;
+                }
+            }
+
+            function buildPayload() {
+                return [
+                    { name: "MODE", type: "INT", value: modeCheckbox && modeCheckbox.checked ? "0" : "255" }
+                ];
+            }
+
+            function clearStatus() {
+                if (!statusBox) return;
+                statusBox.style.display = "none";
+                statusBox.className = "banner banner-info";
+                statusBox.textContent = "";
+            }
+
+            function showStatus(type, message) {
+                if (!statusBox) return;
+                statusBox.style.display = "block";
+                statusBox.className = "banner banner-" + (type === "success" ? "success" : "error");
+                statusBox.textContent = message;
+            }
+
+            document.getElementById("save-native-config").addEventListener("click", function () {
+                clearStatus();
+                var payload = buildPayload();
+                var encoded = btoa(JSON.stringify(payload));
+                fetch("/saveparams.cgi?json=" + encodeURIComponent(encoded))
+                    .then(function (response) { return response.text(); })
+                    .then(function (text) {
+                        try {
+                            var data = JSON.parse(text);
+                            if (data.status === 200) {
+                                showStatus("success", "Native mode saved successfully. These settings will be applied automatically after each power-on.");
+                            } else {
+                                showStatus("error", data.message || "Unable to save native settings.");
+                            }
+                        } catch (e) {
+                            showStatus("error", "Unexpected response from the device.");
+                        }
+                    })
+                    .catch(function () {
+                        showStatus("error", "Network error while saving settings.");
+                    });
+            });
+
+            document.getElementById("reset-native-config").addEventListener("click", function () {
+                applyState(initialState);
+                clearStatus();
+            });
+
+            if (modeCheckbox) {
+                modeCheckbox.addEventListener("change", clearStatus);
+            }
+
+            applyState(initialState);
+        })();
+    </script>
+</body>
+
+</html>

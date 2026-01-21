@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title><!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 0.5rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-row label {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .helper-text {
+            font-weight: 400;
+            color: #555;
+            font-size: 0.95rem;
+            display: block;
+            margin-top: 0.15rem;
+        }
+
+        .form-row select {
+            padding: 0.5rem 0.65rem;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            font-size: 1rem;
+            width: auto;
+            min-width: 160px;
+            max-width: 260px;
+            justify-self: end;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .form-actions button {
+            border: 1px solid #0078e7;
+            background: #0078e7;
+            color: #fff;
+            border-radius: 6px;
+            padding: 0.65rem 1rem;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .form-actions button:last-of-type {
+            background: #fff;
+            color: #0078e7;
+        }
+
+        .form-actions button:hover {
+            opacity: 0.92;
+        }
+
+        /* Toggle switch styling to match USB page */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 54px;
+            height: 28px;
+            justify-self: end;
+        }
+
+        .toggle-switch .toggle-input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .toggle-switch .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 999px;
+        }
+
+        .toggle-switch .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+
+        .toggle-switch .toggle-input:checked+.toggle-slider {
+            background-color: #0c9e6c;
+        }
+
+        .toggle-switch .toggle-input:checked+.toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        @media (max-width: 700px) {
+            .form-row {
+                grid-template-columns: 1fr;
+                align-items: flex-start;
+            }
+
+            .form-row select {
+                justify-self: end;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <nav class="nav-bar" aria-label="Breadcrumb">
+        <ul class="nav-list">
+            <li class="nav-item">
+                <a class="nav-link" href="/mngr_home.shtml">Home</a>
+            </li>
+            <li class="nav-item active">
+                <span class="nav-link" aria-current="page">Bluetooth Configuration</span>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        <section class="content" id="bt-setup">
+            <h2>Bluetooth Configuration</h2>
+            <p>Adjust Bluetooth input device settings.</p>
+            <div class="banner banner-warning">
+                <span class="banner-icon" aria-hidden="true">!</span>
+                <span>Please click "Save settings" to persist any changes you make on this page.</span>
+            </div>
+
+            <div class="pairing-summary" id="paired-summary" aria-live="polite">
+                <div class="pairing-title">Current pairings</div>
+                <div class="pairing-list">
+                    <div class="pair-row">
+                        <div class="pair-icon kb" aria-hidden="true">K</div>
+                        <div class="pair-label">Keyboard</div>
+                        <div id="paired-kb" class="pair-value">Loading...</div>
+                    </div>
+                    <div class="pair-row">
+                        <div class="pair-icon ms" aria-hidden="true">M</div>
+                        <div class="pair-label">Mouse</div>
+                        <div id="paired-mouse" class="pair-value">Loading...</div>
+                    </div>
+                    <div class="pair-row">
+                        <div class="pair-icon gp" aria-hidden="true">G</div>
+                        <div class="pair-label">Gamepad</div>
+                        <div id="paired-gp" class="pair-value">Loading...</div>
+                    </div>
+                </div>
+                <div class="action-buttons" style="margin-top:0.75rem;">
+                    <a class="btn" href="/mngr_btpair.shtml">Open pairing page</a>
+                </div>
+            </div>
+
+            <div id="bt-status" class="banner banner-info" role="status" style="display: none;"></div>
+
+            <form id="bt-config-form">
+                <div class="form-row">
+                    <label for="bt-mode">
+                        <strong>Activate Bluetooth mode</strong>
+                        <div class="helper-text">Set IKBD emulation to Bluetooth so the adapter expects Bluetooth input
+                            devices.</div>
+                    </label>
+                    <label class="toggle-switch" for="bt-mode" aria-label="Activate Bluetooth mode">
+                        <input type="checkbox" class="toggle-input" id="bt-mode" name="bt-mode">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-row">
+                    <div id="bt-settings-group">
+                        <div class="form-row">
+                            <label for="kb-layout">
+                                <strong>Keyboard layout</strong>
+                                <div class="helper-text">Choose the keyboard layout for Bluetooth devices.</div>
+                            </label>
+                            <select id="kb-layout" name="kb-layout">
+                                <option value="fr">France ISO (FR)</option>
+                                <option value="de">Germany ISO (DE)</option>
+                                <option value="it">Italy ISO (IT)</option>
+                                <option value="es">Spain ISO (ES)</option>
+                                <option value="gb">United Kingdom ISO (GB)</option>
+                                <option value="us">United States ANSI (US)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="mouse-speed">
+                                <strong>Mouse speed</strong>
+                                <div class="helper-text">Adjust pointer sensitivity for Bluetooth mice (1 = slow, 10 =
+                                    fast).</div>
+                            </label>
+                            <select id="mouse-speed" name="mouse-speed">
+                                <option value="1">1 (slow)</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10 (fast)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" id="save-bt-config" class="btn">Save settings</button>
+                            <button type="button" id="reset-bt-config" class="btn btn-secondary">Reset</button>
+                        </div>
+                    </div>
+            </form>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+
+    <script>
+        (function () {
+            var statusBox = document.getElementById("bt-status");
+            var modeCheckbox = document.getElementById("bt-mode");
+            var mouseSpeed = document.getElementById("mouse-speed");
+            var kbLayout = document.getElementById("kb-layout");
+            var settingsGroup = document.getElementById("bt-settings-group");
+            var pairedKb = document.getElementById("paired-kb");
+            var pairedMouse = document.getElementById("paired-mouse");
+            var pairedGp = document.getElementById("paired-gp");
+
+            var initialState = {
+                mode: parseInt("<!--#MODE-->", 10) || 0,
+                mouseSpeed: "<!--#MSPEED-->".trim() || "5",
+                kbLayout: ("<!--#BTKBL-->".trim() || "us").toLowerCase()
+            };
+
+            function applyState(state) {
+                if (modeCheckbox) {
+                    modeCheckbox.checked = state.mode === 2;
+                }
+                mouseSpeed.value = state.mouseSpeed;
+                if (kbLayout) {
+                    kbLayout.value = state.kbLayout;
+                }
+                updateVisibility();
+            }
+
+            function showStatus(kind, message) {
+                statusBox.className = "banner " + (kind === "error" ? "banner-error" : "banner-success");
+                statusBox.textContent = message;
+                statusBox.style.display = "flex";
+            }
+
+            function clearStatus() {
+                statusBox.style.display = "none";
+                statusBox.textContent = "";
+            }
+
+            function setPairValue(el, val) {
+                if (!el) return;
+                var empty = !val;
+                el.textContent = empty ? "Not paired" : val;
+                if (empty) el.classList.add("empty");
+                else el.classList.remove("empty");
+            }
+
+            function renderPairings(pairings) {
+                var kb = pairings.keyboard || {};
+                var ms = pairings.mouse || {};
+                var gp = pairings.gamepad || {};
+                var kbText = (kb.name ? kb.name : "") + (kb.address ? " (" + kb.address + ")" : "");
+                var msText = (ms.name ? ms.name : "") + (ms.address ? " (" + ms.address + ")" : "");
+                var gpText = (gp.name ? gp.name : "") + (gp.address ? " (" + gp.address + ")" : "");
+                setPairValue(pairedKb, kbText.trim());
+                setPairValue(pairedMouse, msText.trim());
+                setPairValue(pairedGp, gpText.trim());
+            }
+
+            function fetchPairings() {
+                fetch("/btpairings.cgi")
+                    .then(function (res) {
+                        if (!res.ok) throw new Error();
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        renderPairings(data || {});
+                    })
+                    .catch(function () {
+                        renderPairings({});
+                    });
+            }
+
+            function buildPayload() {
+                return [
+                    { name: "MODE", type: "INT", value: modeCheckbox && modeCheckbox.checked ? "2" : "0" },
+                    { name: "MOUSE_SPEED", type: "INT", value: mouseSpeed.value.toString() },
+                    { name: "BT_KB_LAYOUT", type: "STRING", value: kbLayout ? kbLayout.value.toLowerCase() : "us" }
+                ];
+            }
+
+            function updateVisibility() {
+                if (!settingsGroup) return;
+                settingsGroup.style.display = (modeCheckbox && modeCheckbox.checked) ? "block" : "none";
+            }
+
+            document.getElementById("save-bt-config").addEventListener("click", function () {
+                clearStatus();
+                var payload = buildPayload();
+                var encoded = btoa(JSON.stringify(payload));
+                fetch("/saveparams.cgi?json=" + encodeURIComponent(encoded))
+                    .then(function (response) { return response.text(); })
+                    .then(function (text) {
+                        try {
+                            var data = JSON.parse(text);
+                            if (data.status === 200) {
+                                initialState.mode = modeCheckbox && modeCheckbox.checked ? 2 : 0;
+                                initialState.mouseSpeed = mouseSpeed.value.toString();
+                                initialState.kbLayout = kbLayout ? kbLayout.value.toLowerCase() : "us";
+                                showStatus("success", "Bluetooth settings saved successfully. These settings will be applied automatically after each power-on.");
+                            } else {
+                                showStatus("error", data.message || "Unable to save Bluetooth settings.");
+                            }
+                        } catch (e) {
+                            showStatus("error", "Unexpected response from the device.");
+                        }
+                    })
+                    .catch(function () {
+                        showStatus("error", "Network error while saving settings.");
+                    });
+            });
+
+            document.getElementById("reset-bt-config").addEventListener("click", function () {
+                applyState(initialState);
+                clearStatus();
+            });
+
+            modeCheckbox.addEventListener("change", function () {
+                updateVisibility();
+            });
+
+            applyState(initialState);
+            fetchPairings();
+        })();
+    </script>
+</body>
+
+</html>

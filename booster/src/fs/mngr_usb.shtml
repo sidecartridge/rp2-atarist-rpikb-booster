@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title><!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 0.5rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-row label {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .helper-text {
+            font-weight: 400;
+            color: #555;
+            font-size: 0.95rem;
+            display: block;
+            margin-top: 0.15rem;
+        }
+
+        .form-row input,
+        .form-row select {
+            padding: 0.5rem 0.65rem;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            font-size: 1rem;
+            width: auto;
+            min-width: 160px;
+            max-width: 260px;
+            justify-self: end;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .form-actions button {
+            border: 1px solid #0078e7;
+            background: #0078e7;
+            color: #fff;
+            border-radius: 6px;
+            padding: 0.65rem 1rem;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .form-actions button:last-of-type {
+            background: #fff;
+            color: #0078e7;
+        }
+
+        .form-actions button:hover {
+            opacity: 0.92;
+        }
+
+        @media (max-width: 700px) {
+            .form-row {
+                grid-template-columns: 1fr;
+                align-items: flex-start;
+            }
+
+            .form-row input,
+            .form-row select {
+                justify-self: end;
+            }
+        }
+
+        /* Toggle switch styling */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 54px;
+            height: 28px;
+        }
+
+        .toggle-switch .toggle-input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .toggle-switch .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 999px;
+        }
+
+        .toggle-switch .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+
+        .toggle-switch .toggle-input:checked+.toggle-slider {
+            background-color: #0c9e6c;
+        }
+
+        .toggle-switch .toggle-input:checked+.toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        .form-row .toggle-switch {
+            justify-self: end;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <nav class="nav-bar" aria-label="Breadcrumb">
+        <ul class="nav-list">
+            <li class="nav-item">
+                <a class="nav-link" href="/mngr_home.shtml">Home</a>
+            </li>
+            <li class="nav-item active">
+                <span class="nav-link" aria-current="page">USB Configuration</span>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        <section class="content" id="usb-setup">
+            <h2>USB Configuration</h2>
+            <p>Configure how keyboards, mice and joysticks behave when the adapter runs in USB mode.</p>
+            <div class="banner banner-warning">
+                <span class="banner-icon" aria-hidden="true">!</span>
+                <span>Please click "Save settings" to persist any changes you make on this page.</span>
+            </div>
+
+            <div id="usb-status" class="banner banner-info" role="status" style="display: none;"></div>
+
+            <form id="usb-config-form">
+                <div class="form-row">
+                    <label for="usb-mode">
+                        <strong>Activate USB mode</strong>
+                        <div class="helper-text">Sets the IKBD emulation to USB so the adapter expects USB input
+                            devices.</div>
+                    </label>
+                    <label class="toggle-switch" for="usb-mode" aria-label="Activate USB mode">
+                        <input type="checkbox" class="toggle-input" id="usb-mode" name="usb-mode" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="usb-settings-group">
+                    <div class="form-row">
+                        <label for="kb-layout">
+                            <strong>Keyboard layout</strong>
+                            <div class="helper-text">Choose the keyboard layout for USB devices.</div>
+                        </label>
+                        <select id="kb-layout" name="kb-layout">
+                            <option value="fr">France ISO (FR)</option>
+                            <option value="de">Germany ISO (DE)</option>
+                            <option value="it">Italy ISO (IT)</option>
+                            <option value="es">Spain ISO (ES)</option>
+                            <option value="gb">United Kingdom ISO (GB)</option>
+                            <option value="us">United States ANSI (US)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="mouse-original">
+                            <strong>Use original mouse</strong>
+                            <div class="helper-text">Keep the original ST mouse or use an USB mouse.</div>
+                        </label>
+                        <label class="toggle-switch" for="mouse-original" aria-label="Use original mouse">
+                            <input type="checkbox" class="toggle-input" id="mouse-original" name="mouse-original">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="joystick-usb">
+                            <strong>USB joystick/gamepad</strong>
+                            <div class="helper-text">Enable USB gamepads and map them to the Atari ST joystick port.
+                            </div>
+                        </label>
+                        <label class="toggle-switch" for="joystick-usb" aria-label="USB joystick/gamepad">
+                            <input type="checkbox" class="toggle-input" id="joystick-usb" name="joystick-usb">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-row" id="joystick-port-row">
+                        <label for="joystick-port">
+                            <strong>Preferred joystick port</strong>
+                            <div class="helper-text">Select which ST port the USB joystick maps to.</div>
+                        </label>
+                        <select id="joystick-port" name="joystick-port">
+                            <option value="1">Port 1</option>
+                            <option value="2">Port 2</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="mouse-speed">
+                            <strong>Mouse speed</strong>
+                            <div class="helper-text">Adjust pointer sensitivity for USB mice (1 = slow, 10 = fast).
+                            </div>
+                        </label>
+                        <select id="mouse-speed" name="mouse-speed">
+                            <option value="1">1 (slow)</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10 (fast)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="save-usb-config">Save settings</button>
+                        <button type="button" id="reset-usb-config">Reset</button>
+                    </div>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+
+    <script>
+        (function () {
+            var statusBox = document.getElementById("usb-status");
+            var modeCheckbox = document.getElementById("usb-mode");
+            var joystickUsb = document.getElementById("joystick-usb");
+            var joystickPort = document.getElementById("joystick-port");
+            var mouseOriginal = document.getElementById("mouse-original");
+            var mouseSpeed = document.getElementById("mouse-speed");
+            var kbLayout = document.getElementById("kb-layout");
+            var settingsGroup = document.getElementById("usb-settings-group");
+            var joystickPortRow = document.getElementById("joystick-port-row");
+
+            var currentMode = parseInt("<!--#MODE-->", 10);
+            var kbFromSsi = "<!--#KBLANG-->".trim().toLowerCase() || "us";
+            var initialState = {
+                mode: Number.isNaN(currentMode) ? 0 : currentMode,
+                joystickUsb: ("<!--#JUSB-->".trim().toLowerCase() === "true") ? "Yes" : "No",
+                joystickPort: "<!--#JPORT-->".trim() || "1",
+                mouseOriginal: ("<!--#MORIG-->".trim().toLowerCase() === "true") ? "Yes" : "No",
+                mouseSpeed: "<!--#MSPEED-->".trim() || "5",
+                kbLayout: kbFromSsi
+            };
+
+            function applyState(state) {
+                modeCheckbox.checked = state.mode === 1;
+                joystickUsb.checked = state.joystickUsb === "Yes";
+                joystickPort.value = state.joystickPort;
+                mouseOriginal.checked = state.mouseOriginal === "Yes";
+                mouseSpeed.value = state.mouseSpeed;
+                if (kbLayout) {
+                    kbLayout.value = (state.kbLayout || "us").toLowerCase();
+                }
+                updateVisibility();
+            }
+
+            function showStatus(kind, message) {
+                statusBox.className = "banner " + (kind === "error" ? "banner-error" : "banner-success");
+                statusBox.textContent = message;
+                statusBox.style.display = "flex";
+            }
+
+            function clearStatus() {
+                statusBox.style.display = "none";
+                statusBox.textContent = "";
+            }
+
+            function updateVisibility() {
+                if (!settingsGroup) return;
+                settingsGroup.style.display = modeCheckbox.checked ? "block" : "none";
+                if (joystickPortRow) {
+                    joystickPortRow.style.display = joystickUsb.checked ? "grid" : "none";
+                }
+                updateJoystickPortOptions();
+            }
+
+            function updateJoystickPortOptions() {
+                if (!joystickPort) return;
+                Array.from(joystickPort.options).forEach(function (opt) {
+                    if (opt.value === "1") {
+                        opt.disabled = mouseOriginal.checked;
+                    } else if (opt.value === "2") {
+                        opt.disabled = false;
+                    }
+                });
+                if (mouseOriginal.checked) {
+                    joystickPort.value = "2";
+                }
+            }
+
+            function buildPayload() {
+                var payload = [];
+                payload.push({ name: "MODE", type: "INT", value: modeCheckbox.checked ? "1" : "0" });
+                payload.push({ name: "JOYSTICK_USB", type: "BOOL", value: joystickUsb.checked ? "Yes" : "No" });
+                payload.push({ name: "JOYSTICK_USB_PORT", type: "INT", value: joystickPort.value });
+                payload.push({ name: "MOUSE_ORIGINAL", type: "BOOL", value: mouseOriginal.checked ? "Yes" : "No" });
+                payload.push({ name: "MOUSE_SPEED", type: "INT", value: mouseSpeed.value.toString() });
+                if (kbLayout) {
+                    payload.push({
+                        name: "USB_KB_LAYOUT",
+                        type: "STRING",
+                        value: kbLayout.value.toLowerCase()
+                    });
+                }
+                return payload;
+            }
+
+            document.getElementById("save-usb-config").addEventListener("click", function () {
+                clearStatus();
+                var payload = buildPayload();
+                var encoded = btoa(JSON.stringify(payload));
+                fetch("/saveparams.cgi?json=" + encodeURIComponent(encoded))
+                    .then(function (response) { return response.text(); })
+                    .then(function (text) {
+                        try {
+                            var data = JSON.parse(text);
+                            if (data.status === 200) {
+                                showStatus("success", "USB settings saved successfully. These settings will be applied automatically after each power-on.");
+                            } else {
+                                showStatus("error", data.message || "Unable to save USB settings.");
+                            }
+                        } catch (e) {
+                            showStatus("error", "Unexpected response from the device.");
+                        }
+                    })
+                    .catch(function () {
+                        showStatus("error", "Network error while saving settings.");
+                    });
+            });
+
+            document.getElementById("reset-usb-config").addEventListener("click", function () {
+                applyState(initialState);
+                clearStatus();
+            });
+
+            modeCheckbox.addEventListener("change", function () {
+                updateVisibility();
+            });
+
+            joystickUsb.addEventListener("change", function () {
+                updateVisibility();
+            });
+
+            mouseOriginal.addEventListener("change", function () {
+                updateJoystickPortOptions();
+            });
+
+            applyState(initialState);
+        })();
+    </script>
+</body>
+
+</html>

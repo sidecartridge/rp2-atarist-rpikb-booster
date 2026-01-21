@@ -1,0 +1,61 @@
+{
+    "cmake.statusbar.advanced": {
+        "debug": {
+            "visibility": "hidden"
+        },
+        "launch": {
+            "visibility": "hidden"
+        },
+        "build": {
+            "visibility": "default"
+        },
+        "buildTarget": {
+            "visibility": "hidden"
+        }
+    },
+    "cmake.configureEnvironment": {
+        "STA_TEST_MODE": "1",
+        "STA_TEST_SSID": "CHISMEROUTER",
+        "STA_TEST_PASSWORD": "lucifer6",
+    },
+    "cmake.buildBeforeRun": true,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    // MDOFIFY THIS PATH TO MATCH YOUR SYSTEM
+    "cortex-debug.gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
+    // We need to change both folders to change the build directory and code source directory
+    // "cmake.sourceDirectory": "${workspaceFolder}/placeholder/src",
+    // "cmake.buildDirectory": "${workspaceFolder}/placeholder/build",
+    "cmake.sourceDirectory": "${workspaceFolder}/booster/src",
+    "cmake.buildDirectory": "${workspaceFolder}/booster/build",
+    // Disabling error squiggles to reduce clutter, but consider "enabled" for more feedback
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+    "C_Cpp.codeAnalysis.exclude": {
+        "**/fatfs-sdk": true,
+        "**/pico-sdk": true,
+        "**/pico-extras": true,
+        "**/dist": true,
+        "**/booster/src/httpc": true,
+        "**/booster/src/settings": true,
+        "**/booster/src/ug82": true,
+        "**/booster/build": true,
+        "**/placeholder/build": true,
+        "**/term": true
+    },
+    "C_Cpp.clangTidy.args": [],
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
+    "[c]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
+    "C_Cpp.clang_format_style": "file:${workspaceFolder}/.clang-format",
+    "C_Cpp.formatting": "clangFormat",
+    "editor.formatOnSave": true,
+    "C_Cpp.codeAnalysis.clangTidy.useBuildPath": true,
+    "C_Cpp.codeAnalysis.clangTidy.path": "/usr/local/opt/llvm/bin/clang-tidy",
+    "C_Cpp.codeAnalysis.clangTidy.checks.disabled": [],
+    "C_Cpp.codeAnalysis.clangTidy.args": [
+        "--extra-arg=-ferror-limit=1"
+    ]
+}

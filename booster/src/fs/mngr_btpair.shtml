@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title><!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 0.5rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-row label {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .helper-text {
+            font-weight: 400;
+            color: #555;
+            font-size: 0.95rem;
+            display: block;
+            margin-top: 0.15rem;
+        }
+
+        .pair-action {
+            margin-left: auto;
+        }
+
+        .btn-small {
+            padding: 0.35rem 0.6rem;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <nav class="nav-bar" aria-label="Breadcrumb">
+        <ul class="nav-list">
+            <li class="nav-item">
+                <a class="nav-link" href="/mngr_home.shtml">Home</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/mngr_bt.shtml">Bluetooth</a>
+            </li>
+            <li class="nav-item active">
+                <span class="nav-link" aria-current="page">Pairing</span>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        <section class="content">
+            <h2>Bluetooth Devices</h2>
+            <p>Use the button below to start or stop pairing scans. Manage existing pairings below.</p>
+            <p>Paired devices reconnect faster on Atari ST power-on. If you skip pairing, you can connect “just in time” when you turn on the Atari ST. This is slower and less reliable, but it can help with tricky devices.</p>
+            <div class="action-buttons">
+                <button id="btn-toggle" class="btn" type="button">Start pairing</button>
+                <button id="btn-clean" class="btn btn-danger" type="button">Unpair existing devices</button>
+            </div>
+            <div id="pairing-status" class="helper-text">Pairing is stopped.</div>
+            <div class="pairing-summary" id="paired-summary" aria-live="polite">
+                <div class="pairing-title">Current pairings</div>
+                <div class="pairing-list">
+                    <div class="pair-row">
+                        <div class="pair-icon kb" aria-hidden="true">K</div>
+                        <div class="pair-label">Keyboard</div>
+                        <div id="paired-kb" class="pair-value">Loading...</div>
+                        <div class="pair-action">
+                            <button id="unpair-kb" class="btn btn-secondary btn-small" type="button">Unpair</button>
+                        </div>
+                    </div>
+                    <div class="pair-row">
+                        <div class="pair-icon ms" aria-hidden="true">M</div>
+                        <div class="pair-label">Mouse</div>
+                        <div id="paired-mouse" class="pair-value">Loading...</div>
+                        <div class="pair-action">
+                            <button id="unpair-mouse" class="btn btn-secondary btn-small" type="button">Unpair</button>
+                        </div>
+                    </div>
+                    <div class="pair-row">
+                        <div class="pair-icon gp" aria-hidden="true">G</div>
+                        <div class="pair-label">Gamepad</div>
+                        <div id="paired-gp" class="pair-value">Loading...</div>
+                        <div class="pair-action">
+                            <button id="unpair-gp" class="btn btn-secondary btn-small" type="button">Unpair</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="bt-status" class="banner banner-info" role="status" style="display: none;"></div>
+            <ul id="device-list" class="device-list"></ul>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+
+    <script>
+        (function () {
+            var statusBox = document.getElementById("bt-status");
+            var listEl = document.getElementById("device-list");
+            var pollTimer = null;
+            var isRunning = false;
+            var btnToggle = document.getElementById("btn-toggle");
+            var btnClean = document.getElementById("btn-clean");
+            var pairingStatus = document.getElementById("pairing-status");
+            var pairedKb = document.getElementById("paired-kb");
+            var pairedMouse = document.getElementById("paired-mouse");
+            var pairedGp = document.getElementById("paired-gp");
+            var unpairKb = document.getElementById("unpair-kb");
+            var unpairMouse = document.getElementById("unpair-mouse");
+            var unpairGp = document.getElementById("unpair-gp");
+
+            function setStatus(kind, message) {
+                if (!statusBox) return;
+                statusBox.className = "banner " + (kind === "error" ? "banner-error" : "banner-info");
+                statusBox.textContent = message;
+                statusBox.style.display = "flex";
+            }
+
+            function clearStatus() {
+                if (!statusBox) return;
+                statusBox.style.display = "none";
+                statusBox.textContent = "";
+            }
+
+            function renderDevices(devices) {
+                listEl.innerHTML = "";
+                if (!devices || devices.length === 0) {
+                    listEl.innerHTML = "<li>Scanning for Bluetooth devices...</li>";
+                    return;
+                }
+                devices.forEach(function (dev) {
+                    var li = document.createElement("li");
+                    li.className = "device-card";
+
+                    var meta = document.createElement("div");
+                    meta.className = "device-meta";
+                    var name = document.createElement("div");
+                    name.className = "device-name";
+                    name.textContent = dev.name || "Unknown";
+                    var addr = document.createElement("div");
+                    addr.className = "device-addr";
+                    addr.textContent = dev.address || "";
+                    meta.appendChild(name);
+                    meta.appendChild(addr);
+
+                    var type = document.createElement("div");
+                    var typeText = dev.type || "Unknown";
+                    var typeClass = "";
+                    var lower = typeText.toLowerCase();
+                    if (lower.indexOf("keyboard") !== -1) typeClass = "type-kb";
+                    else if (lower.indexOf("mouse") !== -1) typeClass = "type-ms";
+                    else if (lower.indexOf("gamepad") !== -1 ||
+                        lower.indexOf("joystick") !== -1) typeClass = "type-gp";
+                    type.className = "device-type" + (typeClass ? " " + typeClass : "");
+                    type.textContent = typeText;
+
+                    li.appendChild(meta);
+                    li.appendChild(type);
+                    listEl.appendChild(li);
+                });
+            }
+
+            function setPairValue(el, val) {
+                if (!el) return;
+                var empty = !val;
+                el.textContent = empty ? "Not paired" : val;
+                if (empty) el.classList.add("empty");
+                else el.classList.remove("empty");
+            }
+
+            function setUnpairVisible(btn, visible) {
+                if (!btn) return;
+                btn.style.display = visible ? "" : "none";
+            }
+
+            function renderPairings(pairings) {
+                var kb = pairings.keyboard || {};
+                var ms = pairings.mouse || {};
+                var gp = pairings.gamepad || {};
+                var kbText = (kb.name ? kb.name : "") + (kb.address ? " (" + kb.address + ")" : "");
+                var msText = (ms.name ? ms.name : "") + (ms.address ? " (" + ms.address + ")" : "");
+                var gpText = (gp.name ? gp.name : "") + (gp.address ? " (" + gp.address + ")" : "");
+                setPairValue(pairedKb, kbText.trim());
+                setPairValue(pairedMouse, msText.trim());
+                setPairValue(pairedGp, gpText.trim());
+                setUnpairVisible(unpairKb, !!kbText.trim());
+                setUnpairVisible(unpairMouse, !!msText.trim());
+                setUnpairVisible(unpairGp, !!gpText.trim());
+                var anyPaired = !!(kbText.trim() || msText.trim() || gpText.trim());
+                if (btnClean) {
+                    btnClean.style.display = anyPaired ? "" : "none";
+                }
+            }
+
+            function fetchDevices() {
+                fetch("/btlist.cgi")
+                    .then(function (res) {
+                        if (!res.ok) {
+                            throw new Error("http " + res.status);
+                        }
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        var devices = data.devices || [];
+                        renderDevices(devices);
+                        clearStatus();
+                        fetchPairings();
+                    })
+                    .catch(function () {
+                        // Keep showing scanning message; will try again on next poll.
+                    });
+            }
+
+            function fetchPairings() {
+                fetch("/btpairings.cgi")
+                    .then(function (res) {
+                        if (!res.ok) throw new Error();
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        renderPairings(data || {});
+                    })
+                    .catch(function () {
+                        renderPairings({});
+                    });
+            }
+
+            function startPolling() {
+                if (isRunning) return;
+                isRunning = true;
+                fetch("/btstart.cgi").catch(function () { });
+                listEl.innerHTML = "<li>Scanning for Bluetooth devices...</li>";
+                fetchDevices();
+                pollTimer = setInterval(fetchDevices, 5000);
+                if (btnToggle) {
+                    btnToggle.textContent = "Stop pairing";
+                }
+                if (pairingStatus) {
+                    pairingStatus.textContent = "Pairing is running. Stop to pause scanning.";
+                }
+            }
+
+            function stopPolling() {
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+                fetch("/btstop.cgi").catch(function () { });
+                isRunning = false;
+                if (btnToggle) {
+                    btnToggle.textContent = "Start pairing";
+                }
+                if (pairingStatus) {
+                    pairingStatus.textContent = "Pairing is stopped.";
+                }
+            }
+
+            function cleanPairings() {
+                fetch("/btclean.cgi")
+                    .then(function () {
+                        stopPolling();
+                        listEl.innerHTML = "<li>Pairings cleared.</li>";
+                        clearStatus();
+                        fetchPairings();
+                    })
+                    .catch(function () {
+                        setStatus("error", "Unable to clear pairings. Please try again.");
+                    });
+            }
+
+            function unpairDevice(type, label) {
+                fetch("/btunpair.cgi?type=" + encodeURIComponent(type))
+                    .then(function (response) { return response.text(); })
+                    .then(function (text) {
+                        try {
+                            var data = JSON.parse(text);
+                            if (data.status === 200) {
+                                clearStatus();
+                                fetchPairings();
+                            } else {
+                                setStatus("error", data.message || ("Unable to unpair " + label + "."));
+                            }
+                        } catch (e) {
+                            setStatus("error", "Unexpected response from the device.");
+                        }
+                    })
+                    .catch(function () {
+                        setStatus("error", "Network error while unpairing " + label + ".");
+                    });
+            }
+
+            if (btnClean) {
+                btnClean.addEventListener("click", function () {
+                    var wasRunning = isRunning;
+                    cleanPairings();
+                    if (wasRunning) {
+                        // Restart pairing automatically after cleaning only if it was running.
+                        setTimeout(startPolling, 200);
+                    }
+                });
+            }
+
+            if (btnToggle) {
+                btnToggle.addEventListener("click", function () {
+                    if (isRunning) {
+                        stopPolling();
+                        clearStatus();
+                    } else {
+                        startPolling();
+                    }
+                });
+            }
+
+            if (unpairKb) {
+                unpairKb.addEventListener("click", function () {
+                    unpairDevice("keyboard", "keyboard");
+                });
+            }
+            if (unpairMouse) {
+                unpairMouse.addEventListener("click", function () {
+                    unpairDevice("mouse", "mouse");
+                });
+            }
+            if (unpairGp) {
+                unpairGp.addEventListener("click", function () {
+                    unpairDevice("gamepad", "gamepad");
+                });
+            }
+
+            // Initial render of pairings even before starting pairing scan
+            fetchPairings();
+            // Pairing now starts/stops via the toggle button only.
+            window.addEventListener("beforeunload", stopPolling);
+        })();
+    </script>
+</body>
+
+</html>

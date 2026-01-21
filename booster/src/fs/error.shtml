@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title><!--#TITLEHDR--></title>
+
+  <link rel="icon" href="data:;base64,=">
+  <meta charset="UTF-8">
+  <!-- Important for mobile: ensures responsive scaling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Pure.css (CDN) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css"
+    integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls"
+    crossorigin="anonymous"
+  />
+  <!-- Grid responsiveness (sm, md, lg classes) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/grids-responsive-min.css"
+  />
+  <link rel="stylesheet" href="styles.css?v=1.0" />
+    
+  <!-- Font Awesome for icons (CDN) -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+    
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+
+</head>
+
+<body>
+  <!-- Blue Banner Header -->
+  <header class="header">
+    <h1><!--#TITLEHDR--></h1>
+  </header>
+  
+  <div class="spinner">
+    <!-- Display both error_msg and error side by side -->
+    <span id="error_message"></span> : <span id="error"></span>
+  </div>
+  
+  <div class="spinner">
+    <button class="pure-button" onclick="window.location.href='/mngr_home.shtml'">
+      Go back to main page
+    </button>
+  </div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+
+      // Read error_msg (use decodeURIComponent for unescaping)
+      const errorMsgParam = params.get('error_msg');
+      const errorMessageSpan = document.getElementById('error_message');
+      if (errorMsgParam) {
+        errorMessageSpan.textContent = decodeURIComponent(errorMsgParam);
+      } else {
+        errorMessageSpan.textContent = "Error";
+      }
+
+      // Read error
+      const errorParam = params.get('error');
+      const errorSpan = document.getElementById('error');
+      if (errorParam) {
+        errorSpan.textContent = errorParam;
+      }
+    });
+  </script>
+
+</body>
+</html>
