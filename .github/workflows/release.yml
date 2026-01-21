@@ -36,9 +36,6 @@ jobs:
     - name: Run - Build PICO_W release version
       run: ./build.sh pico_w release image
 
-    - name: Run - Build PICO_W debug version
-      run: ./build.sh pico_w debug
-
     - name: Get version from version.txt
       id: get_version
       run: echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
