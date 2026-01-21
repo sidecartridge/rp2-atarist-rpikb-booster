@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title><!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <main class="main-content">
+        <section id="home" class="content">
+            <h2>Welcome</h2>
+            <p>Please choose how you want to connect your input devices (Green indicates active mode):</p>
+            <div class="mode-grid">
+                <a class="mode-card" data-mode-value="0" data-mode-bit="1" href="/mngr_native.shtml"
+                    style="text-decoration: none;">
+                    <div class="mode-header">
+                        <span class="mode-icon native" aria-hidden="true"></span>
+                        <h3>Passthrough Mode</h3>
+                    </div>
+                    <p>Use the original Atari keyboard, mouse and joystick.</p>
+                </a>
+                <a class="mode-card" data-mode-value="1" data-mode-bit="2" href="/mngr_usb.shtml"
+                    style="text-decoration: none;">
+                    <div class="mode-header">
+                        <span class="mode-icon usb" aria-hidden="true"></span>
+                        <h3>USB Mode</h3>
+                    </div>
+                    <p>Connect your USB keyboard, mouse and joystick/gamepad via USB</p>
+                </a>
+                <a class="mode-card" data-mode-value="2" data-mode-bit="4" href="/mngr_bt.shtml"
+                    style="text-decoration: none;">
+                    <div class="mode-header">
+                        <span class="mode-icon bluetooth" aria-hidden="true"></span>
+                        <h3>Bluetooth Mode</h3>
+                    </div>
+                    <p>Pair Bluetooth keyboard, mouse and joystick/gamepad via Bluetooth</p>
+                </a>
+            </div>
+            <script>
+                (function () {
+                    var modeValue = parseInt("<!--#MODE-->", 10) || 0;
+                    var targetMask = parseInt("<!--#CTARGET-->", 10) || 0;
+                    var cards = document.querySelectorAll(".mode-card");
+                    cards.forEach(function (card) {
+                        var val = parseInt(card.getAttribute("data-mode-value"), 10);
+                        var bit = parseInt(card.getAttribute("data-mode-bit"), 10) || 0;
+                        if (bit && !(targetMask & bit)) {
+                            card.style.display = "none";
+                            return;
+                        }
+                        card.classList.toggle("active", val === modeValue);
+                    });
+                })();
+            </script>
+        </section>
+
+        <section id="help" class="content">
+            <h2>Help</h2>
+            <p>Need guidance? Refer to the included documentation or contact support using your preferred channel.</p>
+            <p>To return to the settings page, power on the Atari ST while holding the RESET button for 10 seconds, then
+                release.</p>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+</body>
+
+</html>
