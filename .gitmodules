@@ -10,3 +10,4 @@
 [submodule "rp2-atarist-rpikb"]
 	path = rp2-atarist-rpikb
 	url = https://github.com/sidecartridge/rp2-atarist-rpikb.git
+	branch = main
