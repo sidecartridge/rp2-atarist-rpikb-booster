@@ -32,6 +32,33 @@ This repo builds:
 
 See `AGENTS.md` for build and workflow details.
 
+## Building
+
+Use the top-level build script:
+
+```sh
+./build.sh <board_type> <build_type> [release_type]
+```
+
+Examples:
+
+```sh
+# Firmware-only (booster + placeholder), no final merged image
+./build.sh pico_w release
+./build.sh pico2_w release
+
+# Full image build (includes core IKBD merge): third arg required
+./build.sh pico_w release full
+./build.sh pico2_w release full
+
+# Debug full image build
+./build.sh pico_w debug full
+./build.sh pico2_w debug full
+```
+
+Note: in `build.sh`, the final merged image step is skipped when the third argument is omitted.
+
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0. See the LICENSE file for details.

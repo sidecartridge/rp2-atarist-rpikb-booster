@@ -8,6 +8,12 @@
 
 #include "include/constants.h"
 #include "include/debug.h"
+#include "hardware/regs/addressmap.h"
+#if defined(PICO_RP2040) && PICO_RP2040
+#include "hardware/regs/m0plus.h"
+#elif defined(PICO_RP2350) && PICO_RP2350
+#include "hardware/regs/m33.h"
+#endif
 
 static inline void jump_to_booster_app() {
   // This code jumps to the Booster application at the top of the flash memory
@@ -15,6 +21,7 @@ static inline void jump_to_booster_app() {
   // This code should be placed at the beginning of the main function, and
   // should be executed if the SELECT signal or the BOOSTER app is selected Set
   // VTOR register, set stack pointer, and jump to reset
+#if defined(PICO_RP2040) && PICO_RP2040
   __asm__ __volatile__(
       "mov r0, %[start]\n"
       "ldr r1, =%[vtable]\n"
@@ -27,6 +34,23 @@ static inline void jump_to_booster_app() {
         [vtable] "X"(PPB_BASE + M0PLUS_VTOR_OFFSET)
       :);
   DPRINTF("You should never reach this point\n");
+#elif defined(PICO_RP2350) && PICO_RP2350
+  __asm__ __volatile__(
+      "mov r0, %[start]\n"
+      "ldr r1, =%[vtable]\n"
+      "str r0, [r1]\n"
+      "ldmia r0, {r0, r1}\n"
+      "msr msp, r0\n"
+      "bx r1\n"
+      :
+      : [start] "r"((unsigned int)&_booster_app_flash_start),
+        [vtable] "X"(PPB_BASE + M33_VTOR_OFFSET)
+      :);
+  DPRINTF("You should never reach this point\n");
+#else
+  DPRINTF("Booster jump is only supported on RP2040/RP2350 builds\n");
+  return;
+#endif
 }
 
 int main() {

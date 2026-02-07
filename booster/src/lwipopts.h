@@ -13,12 +13,15 @@
 #ifndef LWIP_SOCKET
 #define LWIP_SOCKET 0
 #endif
-// MEM_LIBC_MALLOC is incompatible with cyw43 threadsafe background;
-// force it off to avoid linker/compile errors.
+#if PICO_CYW43_ARCH_POLL
+#define MEM_LIBC_MALLOC 1
+#else
+// MEM_LIBC_MALLOC is incompatible with non polling versions
 #define MEM_LIBC_MALLOC 0
+#endif
 
 #define MEM_ALIGNMENT 4
-#define MEM_SIZE 8192
+#define MEM_SIZE 4096
 
 #if defined(_DEBUG) && (_DEBUG != 0)
 #define MEM_SANITY_CHECK 1
@@ -35,8 +38,8 @@
 #define PBUF_POOL_SIZE 32
 #define LWIP_ARP 1
 #define LWIP_ETHERNET 1
-#define LWIP_ICMP 0
-#define LWIP_RAW 0
+#define LWIP_ICMP 1
+#define LWIP_RAW 1
 #define TCP_MSS 1460
 #define TCP_WND (12 * TCP_MSS)
 #define TCP_SND_BUF (8 * TCP_MSS)
@@ -110,9 +113,8 @@
 #define MDNS_RESP_USENETIF_EXTCALLBACK 1
 // #define MEMP_NUM_SYS_TIMEOUT (LWIP_NUM_SYS_TIMEOUT_INTERNAL + 3)
 #define MEMP_NUM_SYS_TIMEOUT (32)
-
 // #define TCP_FAST_INTERVAL 50
-#define TCP_NODELAY 0
+#define TCP_NODELAY 1
 
 #define LWIP_NETIF_API \
   0  //  Not needed. Sequential API, and therefore for platforms with OSes only.
@@ -129,15 +131,15 @@
 #define LWIP_HTTPD_SSI_MULTIPART 1
 #define LWIP_HTTPD_DYNAMIC_HEADERS 0
 #define LWIP_HTTPD_SUPPORT_POST 1
-#define LWIP_HTTPD_SUPPORT_11_KEEPALIVE 1
+#define LWIP_HTTPD_SUPPORT_11_KEEPALIVE 0
 
-#define LWIP_HTTPD_FS_ASYNC_READ 1
+#define LWIP_HTTPD_FS_ASYNC_READ 0
 #define HTTPD_POLL_INTERVAL 1
 #define HTTPD_PRECALCULATED_CHECKSUM 1
 #define HTTPD_USE_MEM_POOL 1
 
-#define MEMP_NUM_PARALLEL_HTTPD_CONNS 6
-#define MEMP_NUM_PARALLEL_HTTPD_SSI_CONNS 6
+#define MEMP_NUM_PARALLEL_HTTPD_CONNS 8
+#define MEMP_NUM_PARALLEL_HTTPD_SSI_CONNS 8
 
 #define LWIP_HTTPD_ABORT_ON_CLOSE_MEM_ERROR 1
 
