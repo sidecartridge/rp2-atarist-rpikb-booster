@@ -33,7 +33,7 @@
 #define MNGR_STA_TEST_AUTH 0
 #endif
 
-int mngr_init() {
+int __not_in_flash_func(mngr_init)() {
   // Set SSID
   char ssid[128] = {0};
   SettingsConfigEntry *ssid_param =
@@ -94,7 +94,7 @@ int mngr_init() {
   return 0;
 }
 
-void mngr_loop() {
+void __not_in_flash_func(mngr_loop)() {
   // Blink status: keep ATARI steady and blink only the USB output.
   bool usb_active = false;
   absolute_time_t next_blink = make_timeout_time_ms(MNGR_BLINK_PERIOD_MS);
@@ -102,7 +102,7 @@ void mngr_loop() {
   while (true) {
 #if PICO_CYW43_ARCH_POLL
     network_safePoll();
-    cyw43_arch_wait_for_work_until(10);
+    cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
 #else
     sleep_ms(10);
 #endif

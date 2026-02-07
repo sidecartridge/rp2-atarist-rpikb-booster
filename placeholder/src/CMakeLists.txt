@@ -20,16 +20,42 @@ if (DEFINED ENV{PICOTOOL_OVERRIDE_DIR})
     endif()
 endif ()
 
-# If not specified, use pico_w as default board type
-set(BOARD_TYPE $ENV{BOARD_TYPE})
-if(NOT DEFINED BOARD_TYPE)
-    message(STATUS "BOARD_TYPE not set, using default pico_w")
-    set(BOARD_TYPE "pico")
+# Board / platform selection:
+# Use env var PICO_PLATFORM as selector: pico_w | pico2_w (also accepts rp2040 | rp2350).
+# If PICO_PLATFORM is not set, fallback to BOARD_TYPE.
+# Default is pico_w -> rp2040 for placeholder compatibility.
+set(PICO_PLATFORM_SELECTOR "$ENV{PICO_PLATFORM}")
+string(STRIP "${PICO_PLATFORM_SELECTOR}" PICO_PLATFORM_SELECTOR)
+
+if("${PICO_PLATFORM_SELECTOR}" STREQUAL "")
+    set(PICO_PLATFORM_SELECTOR "$ENV{BOARD_TYPE}")
+    string(STRIP "${PICO_PLATFORM_SELECTOR}" PICO_PLATFORM_SELECTOR)
 endif()
-set(PICO_BOARD ${BOARD_TYPE})
+
+if("${PICO_PLATFORM_SELECTOR}" STREQUAL "")
+    set(PICO_BOARD "pico_w")
+    set(PICO_PLATFORM "rp2040")
+    message(STATUS "PICO_PLATFORM not set, defaulting to PICO_BOARD=${PICO_BOARD}, PICO_PLATFORM=${PICO_PLATFORM}")
+elseif("${PICO_PLATFORM_SELECTOR}" STREQUAL "pico2_w" OR "${PICO_PLATFORM_SELECTOR}" STREQUAL "rp2350")
+    set(PICO_BOARD "pico2_w")
+    set(PICO_PLATFORM "rp2350")
+elseif("${PICO_PLATFORM_SELECTOR}" STREQUAL "pico_w" OR "${PICO_PLATFORM_SELECTOR}" STREQUAL "rp2040")
+    set(PICO_BOARD "pico_w")
+    set(PICO_PLATFORM "rp2040")
+elseif("${PICO_PLATFORM_SELECTOR}" STREQUAL "pico")
+    set(PICO_BOARD "pico")
+    set(PICO_PLATFORM "rp2040")
+else()
+    message(FATAL_ERROR "Unsupported PICO_PLATFORM='${PICO_PLATFORM_SELECTOR}'. Supported values: pico2_w, pico_w, pico (also rp2350, rp2040).")
+endif()
+
+# Keep BOARD_TYPE aligned with resolved PICO_BOARD for downstream compile definitions.
+set(BOARD_TYPE ${PICO_BOARD})
 
 # Determine board type macros
 if("${BOARD_TYPE}" STREQUAL "pico_w")
+    add_compile_definitions(BOARD_TYPE_PICO_W=1 BOARD_TYPE_PICO=0 BOARD_TYPE_CUSTOM16MB=0)
+elseif("${BOARD_TYPE}" STREQUAL "pico2_w")
     add_compile_definitions(BOARD_TYPE_PICO_W=1 BOARD_TYPE_PICO=0 BOARD_TYPE_CUSTOM16MB=0)
 elseif("${BOARD_TYPE}" STREQUAL "pico")
     add_compile_definitions(BOARD_TYPE_PICO_W=0 BOARD_TYPE_PICO=1 BOARD_TYPE_CUSTOM16MB=0)
@@ -73,11 +99,6 @@ set(LINK_LIBRARIES
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LINK_LIBRARIES}
     hardware_flash # Specific hardware flash library
-)
-
-# Link custom memmap with reserved memory for ROMs
-set_target_properties(${PROJECT_NAME} PROPERTIES
-        PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_placeholder.ld
 )
 
 # Use reduced space for ROMs
@@ -165,9 +186,15 @@ if(CMAKE_BUILD_TYPE STREQUAL "CustomBuild")
 endif()
 
 # Conditionally set linker script
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_rp2-ikbd_default.ld
-)
+if(PICO_PLATFORM STREQUAL "rp2350" OR PICO_PLATFORM STREQUAL "rp2350-arm-s" OR PICO_PLATFORM STREQUAL "rp2350-riscv")
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_rp2-ikbd_rp2350.ld
+    )
+else()
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_rp2-ikbd_default.ld
+    )
+endif()
 
 # Print the variables on screen
 message(STATUS "RELEASE_TYPE: " ${RELEASE_TYPE})

@@ -4,11 +4,14 @@
 git submodule init
 git submodule update --init --recursive
 
+# Update core firmware submodule to latest main branch
+echo "Updating rp2-atarist-rpikb submodule to latest main branch..."
+git submodule sync -- rp2-atarist-rpikb
+git submodule set-branch --branch main rp2-atarist-rpikb
+git submodule update --remote --merge rp2-atarist-rpikb
+
 # Pin the building versions
 echo "Pinning the  versions..."
-cd rp2-atarist-rpikb
-#git checkout tags/2.2.0
-cd ..
 
 # Copy the version.txt to each project
 echo "Copy version.txt to each project"
@@ -24,8 +27,8 @@ export RELEASE_TYPE=${3:-""}
 echo "Release type: $RELEASE_TYPE"
 
 # Set the board type to be used for building
-# If nothing passed as first argument, use sidecartos_16mb
-export BOARD_TYPE=${1:-pico_w}
+# If nothing passed as first argument, use pico2_w
+export BOARD_TYPE=${1:-pico2_w}
 echo "Board type: $BOARD_TYPE"
 
 # Set the release or debug build type
@@ -72,35 +75,30 @@ else
     mv ./dist/rp-booster.uf2 ./dist/rp-booster-$VERSION-$BUILD_TYPE.uf2
 fi
 
-# If there is no parameter ${3} passed, then exit
-if [ -z ${3} ]; then
-    echo "Exiting now, no image file building requested"
+# If there is no third parameter, skip full image build
+if [ -z "$RELEASE_TYPE" ]; then
+    echo "Exiting now, no full image build requested"
     exit 0
 fi
 
-# Build the placeholder
+# Build core project
 echo "Building core project"
 cd rp2-atarist-rpikb
-
-./build.sh pico_w $BUILD_TYPE
-
-# Build the image file
-echo "Building image file..."
+./build.sh $BOARD_TYPE $BUILD_TYPE
 cd ..
 
+# Build full image
+echo "Building full image file..."
 rm -f ./dist/*.uf2
-
-# Rename the file to include the version number and the build type
 if [ "$BUILD_TYPE" = "release" ]; then
-    python merge_uf2.py ./rp2-atarist-rpikb/dist/rp2-ikbd-pico_w.uf2 ./build/booster.uf2 ./dist/rp-booster-all.uf2
+    python merge_uf2.py ./rp2-atarist-rpikb/dist/rp2-ikbd-$BOARD_TYPE.uf2 ./build/booster.uf2 ./dist/rp-booster-all.uf2
     mv ./dist/rp-booster-all.uf2 ./dist/ikbd-booster-$VERSION-full.uf2
 else
-    python merge_uf2.py ./rp2-atarist-rpikb/dist/rp2-ikbd-pico_w-$BUILD_TYPE.uf2 ./build/booster.uf2 ./dist/rp-booster-all.uf2
+    python merge_uf2.py ./rp2-atarist-rpikb/dist/rp2-ikbd-$BOARD_TYPE-$BUILD_TYPE.uf2 ./build/booster.uf2 ./dist/rp-booster-all.uf2
     mv ./dist/rp-booster-all.uf2 ./dist/ikbd-booster-$VERSION-$BUILD_TYPE-full.uf2
 fi
- 
+
 # Done
 echo "Done"
 
 exit 0
-

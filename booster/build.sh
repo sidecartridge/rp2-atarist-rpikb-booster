@@ -7,6 +7,10 @@ cd ..
 git submodule init
 git submodule update --init --recursive
 
+# Update submodules to latest remote state
+echo "Updating submodules to latest remote state..."
+git submodule update --init --recursive --remote
+
 # Pin the building versions
 echo "Pinning the SDK versions..."
 cd pico-sdk
@@ -54,9 +58,10 @@ export RELEASE_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 echo "Release date: $RELEASE_DATE"
 
 # Set the board type to be used for building
-# If nothing passed as first argument, use pico_w
-export BOARD_TYPE=${1:-pico_w}
+# If nothing passed as first argument, use pico2_w
+export BOARD_TYPE=${1:-pico2_w}
 export PICO_BOARD=$BOARD_TYPE
+export PICO_PLATFORM=$BOARD_TYPE
 echo "Board type: $BOARD_TYPE"
 
 # Set the release or debug build type

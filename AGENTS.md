@@ -63,20 +63,21 @@ Use the repo root `build.sh`:
 
 ### Debug build
 ```sh
-./build.sh pico_w debug
+./build.sh pico2_w debug
 ```
 
 ### Release build
 ```sh
-./build.sh pico_w release
+./build.sh pico2_w release
 ```
 
 ### Full image build (includes core firmware)
 ```sh
-./build.sh pico_w release full
+./build.sh pico2_w release full
 ```
 
 Notes:
+- Supported `board_type` values include `pico_w` and `pico2_w`.
 - `build.sh` deletes the root `build/` directory each run.
 - With the third arg, `build.sh` also builds `rp2-atarist-rpikb/` and merges a
   combined UF2 into `dist/`.

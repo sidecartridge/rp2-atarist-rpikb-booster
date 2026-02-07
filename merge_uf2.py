@@ -35,6 +35,7 @@ UF2_PAYLOAD_SIZE  = 256
 
 UF2_MAGIC_START   = 0x0A324655
 UF2_MAGIC_END     = 0x0AB16F30  # Typical trailing marker
+UF2_IGNORE_ADDR_FROM = 0x10FFFF00
 
 FLASH_BASE_ADDR   = 0x10000000
 FLASH_END_ADDR    = 0x10200000  # Inclusive end address for this build
@@ -93,6 +94,8 @@ def read_uf2_blocks(path: str) -> List[UF2Block]:
         chunk = raw[i * UF2_BLOCK_SIZE : (i + 1) * UF2_BLOCK_SIZE]
         blk   = UF2Block(chunk)
         if blk.is_valid():
+            if blk.target_addr >= UF2_IGNORE_ADDR_FROM:
+                continue
             blocks.append(blk)
     return blocks
 

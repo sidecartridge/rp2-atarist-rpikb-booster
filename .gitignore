@@ -54,6 +54,7 @@ dkms.conf
 .history/
 build/
 dist/
+build_test/
 secrets.sh
 term/atarist/term_firmware.h
 .venv/
