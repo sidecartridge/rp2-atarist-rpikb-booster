@@ -27,7 +27,6 @@
 #include "lwip/pbuf.h"
 #include "mbedtls/base64.h"
 #include "network.h"
-#include "bt/uni_bt_allowlist.h"
 #include "version.h"
 
 // Basic stubs for LWIP_HTTPD_SUPPORT_POST to satisfy linker; POST bodies are
@@ -219,6 +218,16 @@ static const char *ssi_tags[] = {
     "KBLANG",    // 12 - USB keyboard layout
     "BTKBL",     // 13 - BT keyboard layout
     "CTARGET",   // 14 - Computer target mask
+    "BTGSHT",    // 15 - BT gamepad auto-shoot speed
+    "JASHT",     // 16 - USB joystick auto-shoot speed
+    "WFIMODE",   // 17 - WiFi mode (0=AP,1=STA)
+    "WFIHOST",   // 18 - WiFi hostname
+    "WFISSID",   // 19 - WiFi SSID
+    "WFIPASS",   // 20 - WiFi password
+    "WFIAUTH",   // 21 - WiFi auth mode
+    "WDFHOST",   // 22 - WiFi default AP hostname
+    "WDFPASS",   // 23 - WiFi default AP password
+    "WDFAUTH",   // 24 - WiFi default AP auth mode
 };
 
 /**
@@ -570,8 +579,10 @@ const char *cgi_btunpair(int iIndex, int iNumParams, char *pcParam[],
   bool have_addr =
       (entry != NULL && parse_addr_from_setting_value(entry->value, addr));
 
+  // Keep BT stack lists clean even on single-unpair operation.
+  btloop_clear_bt_lists();
+
   if (have_addr) {
-    uni_bt_allowlist_remove_addr(addr);
 #ifdef ENABLE_CLASSIC
     gap_drop_link_key_for_bd_addr(addr);
 #endif
@@ -830,6 +841,77 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
     case 14: /* CTARGET */
       printed = snprintf(pcInsert, iInsertLen, "%d", COMPUTER_TARGET);
       break;
+    case 15: /* BTGSHT */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_BT_GAMEPADSHOOT);
+      const char *val = (entry && entry->value) ? entry->value : "0";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 16: /* JASHT */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_JOYSTICK_USB_AUTOSHOOT);
+      const char *val = (entry && entry->value) ? entry->value : "0";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 17: /* WFIMODE */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_WIFI_MODE);
+      const char *val = (entry && entry->value) ? entry->value : "0";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 18: /* WFIHOST */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_HOSTNAME);
+      const char *val = (entry && entry->value) ? entry->value : "croissant";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 19: /* WFISSID */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_WIFI_SSID);
+      const char *val = (entry && entry->value) ? entry->value : "";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 20: /* WFIPASS */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_WIFI_PASSWORD);
+      const char *val = (entry && entry->value) ? entry->value : "";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 21: /* WFIAUTH */
+    {
+      SettingsConfigEntry *entry =
+          settings_find_entry(gconfig_getContext(), PARAM_WIFI_AUTH);
+      const char *val = (entry && entry->value) ? entry->value : "0";
+      printed = snprintf(pcInsert, iInsertLen, "%s", val);
+      break;
+    }
+    case 22: /* WDFHOST */
+    {
+      printed = snprintf(pcInsert, iInsertLen, "%s", WIFI_AP_HOSTNAME);
+      break;
+    }
+    case 23: /* WDFPASS */
+    {
+      printed = snprintf(pcInsert, iInsertLen, "%s", WIFI_AP_PASS);
+      break;
+    }
+    case 24: /* WDFAUTH */
+    {
+      printed = snprintf(pcInsert, iInsertLen, "%d", WIFI_AP_AUTH);
+      break;
+    }
     default: /* unknown tag */
       printed = 0;
       break;
