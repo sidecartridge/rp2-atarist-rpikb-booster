@@ -30,10 +30,6 @@
 #include "dhcpserver.h"
 #endif
 
-#ifdef CYW43_WL_GPIO_LED_PIN
-#include "dnsserver.h"
-#endif
-
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,7 +42,7 @@
 #define NETWORK_POLLING_INTERVAL 100  // 100 ms
 #define NETWORK_CONNECT_TIMEOUT 30    // 30 seconds
 
-#define NETWORK_POWER_MGMT_DISABLED 0xa11140
+#define NETWORK_POWER_MGMT_DISABLED CYW43_NONE_PM
 #define NETWORK_POWER_MGMT_MAX_OPTIONS 5
 
 #define NETWORK_MAX_STRING_LENGTH 32

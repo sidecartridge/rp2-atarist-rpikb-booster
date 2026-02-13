@@ -26,6 +26,7 @@
 
 #ifdef ENABLE_CLASSIC
 #define ENABLE_L2CAP_ENHANCED_RETRANSMISSION_MODE
+#define ENABLE_GOEP_L2CAP
 #else
 #error "BP32: ENABLE_CLASSIC should be defined"
 #endif

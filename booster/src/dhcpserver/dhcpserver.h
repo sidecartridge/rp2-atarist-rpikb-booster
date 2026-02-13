@@ -78,6 +78,7 @@ typedef struct _dhcp_server_t {
     ip_addr_t nm;
     dhcp_server_lease_t lease[DHCPS_MAX_IP];
     struct udp_pcb *udp;
+    uint8_t first_lease_served;
 } dhcp_server_t;
 
 typedef struct {
