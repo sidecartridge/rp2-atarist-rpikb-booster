@@ -60,6 +60,12 @@
                     });
                 })();
             </script>
+
+            <h2 style="margin-top:1.25rem;">Network</h2>
+            <p>Need to fine tune the manager network behavior?</p>
+            <div class="action-buttons">
+                <a class="btn" href="/mngr_wifi.shtml">Advanced network settings</a>
+            </div>
         </section>
 
         <section id="help" class="content">
@@ -71,7 +77,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+        <p>&copy; 2026 GOODDATA LABS SLU. All rights reserved.</p>
     </footer>
 </body>
 
