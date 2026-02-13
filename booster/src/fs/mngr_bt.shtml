@@ -212,11 +212,12 @@
                         <div class="form-row">
                             <label for="mouse-speed">
                                 <strong>Mouse speed</strong>
-                                <div class="helper-text">Adjust pointer sensitivity for Bluetooth mice (1 = slow, 10 =
-                                    fast).</div>
+                                <div class="helper-text">Adjust pointer sensitivity for Bluetooth mice (1 = slowest, 10
+                                    =
+                                    fastest).</div>
                             </label>
                             <select id="mouse-speed" name="mouse-speed">
-                                <option value="1">1 (slow)</option>
+                                <option value="1">1 (slowest)</option>
                                 <option value="2">2</option>
                                 <option value="3">3</option>
                                 <option value="4">4</option>
@@ -225,7 +226,28 @@
                                 <option value="7">7</option>
                                 <option value="8">8</option>
                                 <option value="9">9</option>
-                                <option value="10">10 (fast)</option>
+                                <option value="10">10 (fastest)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="gamepad-autoshoot">
+                                <strong>Gamepad auto-shoot</strong>
+                                <div class="helper-text">Set auto-shoot speed for Bluetooth gamepads (0 = disabled, 1 =
+                                    slowest, 10 = fastest).</div>
+                            </label>
+                            <select id="gamepad-autoshoot" name="gamepad-autoshoot">
+                                <option value="0">0 (disabled)</option>
+                                <option value="1">1 (slowest)</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10 (fastest)</option>
                             </select>
                         </div>
 
@@ -239,7 +261,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+        <p>&copy; 2026 GOODDATA LABS SLU. All rights reserved.</p>
     </footer>
 
     <script>
@@ -247,6 +269,7 @@
             var statusBox = document.getElementById("bt-status");
             var modeCheckbox = document.getElementById("bt-mode");
             var mouseSpeed = document.getElementById("mouse-speed");
+            var gamepadAutoshoot = document.getElementById("gamepad-autoshoot");
             var kbLayout = document.getElementById("kb-layout");
             var settingsGroup = document.getElementById("bt-settings-group");
             var pairedKb = document.getElementById("paired-kb");
@@ -256,6 +279,7 @@
             var initialState = {
                 mode: parseInt("<!--#MODE-->", 10) || 0,
                 mouseSpeed: "<!--#MSPEED-->".trim() || "5",
+                gamepadAutoshoot: "<!--#BTGSHT-->".trim() || "0",
                 kbLayout: ("<!--#BTKBL-->".trim() || "us").toLowerCase()
             };
 
@@ -264,6 +288,9 @@
                     modeCheckbox.checked = state.mode === 2;
                 }
                 mouseSpeed.value = state.mouseSpeed;
+                if (gamepadAutoshoot) {
+                    gamepadAutoshoot.value = state.gamepadAutoshoot || "0";
+                }
                 if (kbLayout) {
                     kbLayout.value = state.kbLayout;
                 }
@@ -319,6 +346,7 @@
                 return [
                     { name: "MODE", type: "INT", value: modeCheckbox && modeCheckbox.checked ? "2" : "0" },
                     { name: "MOUSE_SPEED", type: "INT", value: mouseSpeed.value.toString() },
+                    { name: "BT_GAMEPAD_SHOOT", type: "INT", value: gamepadAutoshoot ? gamepadAutoshoot.value.toString() : "0" },
                     { name: "BT_KB_LAYOUT", type: "STRING", value: kbLayout ? kbLayout.value.toLowerCase() : "us" }
                 ];
             }
@@ -340,6 +368,7 @@
                             if (data.status === 200) {
                                 initialState.mode = modeCheckbox && modeCheckbox.checked ? 2 : 0;
                                 initialState.mouseSpeed = mouseSpeed.value.toString();
+                                initialState.gamepadAutoshoot = gamepadAutoshoot ? gamepadAutoshoot.value.toString() : "0";
                                 initialState.kbLayout = kbLayout ? kbLayout.value.toLowerCase() : "us";
                                 showStatus("success", "Bluetooth settings saved successfully. These settings will be applied automatically after each power-on.");
                             } else {

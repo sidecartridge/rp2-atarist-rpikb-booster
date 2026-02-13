@@ -18,6 +18,7 @@ void btloop_disable(void);
 void btloop_poll(void);
 void btloop_get_devices(const bt_device_info_t **devices, size_t *count);
 void btloop_reset_devices(void);
+void btloop_clear_bt_lists(void);
 void btloop_clear_pairings(void);
 
 #endif  // BTLOOP_H
