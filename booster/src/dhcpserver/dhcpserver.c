@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #include "cyw43_config.h"
 #include "dhcpserver.h"
@@ -164,6 +165,7 @@ static void dhcp_server_process(void *arg, struct udp_pcb *upcb, struct pbuf *p,
 
     // This is around 548 bytes
     dhcp_msg_t dhcp_msg;
+    bool disable_after_reply = false;
 
     #define DHCP_MIN_SIZE (240 + 3)
     if (p->tot_len < DHCP_MIN_SIZE) {
@@ -226,7 +228,7 @@ static void dhcp_server_process(void *arg, struct udp_pcb *upcb, struct pbuf *p,
         }
 
         case DHCPREQUEST: {
-            DPRINTF("DHCP DISCOVER[3]\n");
+            DPRINTF("DHCP REQUEST[3]\n");
             uint8_t *o = opt_find(opt, DHCP_OPT_REQUESTED_IP);
             if (o == NULL) {
                 // Should be NACK
@@ -261,6 +263,10 @@ static void dhcp_server_process(void *arg, struct udp_pcb *upcb, struct pbuf *p,
             d->lease[yi].expiry = (cyw43_hal_ticks_ms() + DEFAULT_LEASE_TIME_S * 1000) >> 16;
             dhcp_msg.yiaddr[3] = DHCPS_BASE_IP + yi;
             opt_write_u8(&opt, DHCP_OPT_MSG_TYPE, DHCPACK);
+            if (!d->first_lease_served) {
+                d->first_lease_served = 1;
+                disable_after_reply = true;
+            }
             DPRINTF("DHCPS: client connected: MAC=%02x:%02x:%02x:%02x:%02x:%02x IP=%u.%u.%u.%u\n",
                 dhcp_msg.chaddr[0], dhcp_msg.chaddr[1], dhcp_msg.chaddr[2], dhcp_msg.chaddr[3], dhcp_msg.chaddr[4], dhcp_msg.chaddr[5],
                 dhcp_msg.yiaddr[0], dhcp_msg.yiaddr[1], dhcp_msg.yiaddr[2], dhcp_msg.yiaddr[3]);
@@ -368,6 +374,11 @@ static void dhcp_server_process(void *arg, struct udp_pcb *upcb, struct pbuf *p,
         dhcp_server_cb(d, &dhcp_msg, nif);
     }
 
+    if (disable_after_reply && dhcp_msg.options[2] == DHCPACK) {
+        DPRINTF("DHCPS: first lease served, disabling DHCP server\n");
+        dhcp_socket_free(&d->udp);
+    }
+
 ignore_request:
     pbuf_free(p);
 }
@@ -376,6 +387,7 @@ void dhcp_server_init(ip_addr_t *ip, ip_addr_t *nm) {
     ip_addr_copy(dhcp_server_data.ip, *ip);
     ip_addr_copy(dhcp_server_data.nm, *nm);
     memset(dhcp_server_data.lease, 0, sizeof(dhcp_server_data.lease));
+    dhcp_server_data.first_lease_served = 0;
 
     if (dhcp_socket_new_dgram(&dhcp_server_data.udp, &dhcp_server_data, dhcp_server_process) != 0) {
         return;

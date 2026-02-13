@@ -62,7 +62,7 @@
 #define LWIP_IPV4 1
 #define LWIP_TCP 1
 #define LWIP_UDP 1
-#define LWIP_DNS 1
+#define LWIP_DNS 1  // DNS client (resolver) enabled; captive DNS server removed from app
 #define LWIP_TCP_KEEPALIVE 0
 #define LWIP_NETIF_TX_SINGLE_PBUF 1
 #define DHCP_DOES_ARP_CHECK 0

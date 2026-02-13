@@ -10,12 +10,17 @@ static ip_addr_t currentIp = {0};
 static uint8_t cyw43Mac[NETWORK_MAC_SIZE];
 static wifi_sta_conn_status_t connectionStatus = DISCONNECTED;
 static char connectionStatusStr[NETWORK_MAX_STRING_LENGTH] = {0};
+#if LWIP_MDNS_RESPONDER
+static bool mdnsResponderInitialized = false;
+#endif
 
 // Static variable to store the callback function
 static NetworkPollingCallback networkPollingCallback = NULL;
 
 #if LWIP_MDNS_RESPONDER
 static void srv_txt(struct mdns_service *service, void *txt_userdata);
+static void network_setupMdns(struct netif *netif, const char *hostname,
+                              const char *serviceName);
 #endif
 
 static const char *picoSerialStr() {
@@ -84,6 +89,29 @@ void network_deInit() {
   } else {
     DPRINTF("Network already deinitialized\n");
   }
+}
+#endif
+
+#ifdef CYW43_WL_GPIO_LED_PIN
+static void network_safePreInitCleanup() {
+  // Defensive cleanup for cases where a previously executed app left CYW43
+  // running and this app starts with fresh module-local state.
+  async_context_t *context = cyw43_arch_async_context();
+  bool driverInitialized = cyw43_is_initialized(&cyw43_state);
+
+  if (context == NULL && !driverInitialized) {
+    return;
+  }
+
+  DPRINTF("Detected active CYW43 state before init. Forcing deinitialization.\n");
+  if (context != NULL) {
+    cyw43_arch_deinit();
+    sleep_ms(50);
+  } else {
+    DPRINTF("CYW43 appears initialized but async context is NULL. Skipping forced deinit.\n");
+  }
+
+  cyw43Initialized = false;
 }
 #endif
 
@@ -194,6 +222,135 @@ bool network_parsePassword(const char *password, char *outPassword) {
   return false;
 }
 
+static bool network_parseBssid(const char *value, uint8_t outBssid[NETWORK_MAC_SIZE],
+                               char outBssidStr[MAX_BSSID_LENGTH]) {
+  if (value == NULL || outBssid == NULL || outBssidStr == NULL) {
+    return false;
+  }
+
+  // Canonical BSSID format: xx:xx:xx:xx:xx:xx
+  if (strlen(value) != 17) {
+    return false;
+  }
+
+  char sep = value[2];
+  if (sep != ':' && sep != '-') {
+    return false;
+  }
+
+  for (int i = 0; i < NETWORK_MAC_SIZE; i++) {
+    int idx = i * 3;
+    if (!isxdigit((unsigned char)value[idx]) ||
+        !isxdigit((unsigned char)value[idx + 1])) {
+      return false;
+    }
+    if (i < NETWORK_MAC_SIZE - 1 && value[idx + 2] != sep) {
+      return false;
+    }
+
+    char hexPair[3] = {value[idx], value[idx + 1], '\0'};
+    outBssid[i] = (uint8_t)strtoul(hexPair, NULL, HEX_BASE);
+
+    outBssidStr[idx] = (char)tolower((unsigned char)value[idx]);
+    outBssidStr[idx + 1] = (char)tolower((unsigned char)value[idx + 1]);
+    if (i < NETWORK_MAC_SIZE - 1) {
+      outBssidStr[idx + 2] = ':';
+    }
+  }
+  outBssidStr[17] = '\0';
+  return true;
+}
+
+static bool network_findCachedSsidByBssid(const char *bssid, char *outSsid,
+                                          size_t outSsidSize) {
+  if (bssid == NULL || outSsid == NULL || outSsidSize == 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < wifiScanData.count; i++) {
+    wifi_network_info_t *network = &wifiScanData.networks[i];
+    if (strcasecmp(network->bssid, bssid) == 0 && strlen(network->ssid) > 0) {
+      strncpy(outSsid, network->ssid, outSsidSize - 1);
+      outSsid[outSsidSize - 1] = '\0';
+      return true;
+    }
+  }
+
+  outSsid[0] = '\0';
+  return false;
+}
+
+typedef struct {
+  char bssid[MAX_BSSID_LENGTH];
+  char ssid[MAX_SSID_LENGTH];
+  bool found;
+} bssid_scan_lookup_ctx_t;
+
+static int network_scanLookupBssidCallback(void *env,
+                                           const cyw43_ev_scan_result_t *result) {
+  if (env == NULL || result == NULL) {
+    return 0;
+  }
+
+  bssid_scan_lookup_ctx_t *ctx = (bssid_scan_lookup_ctx_t *)env;
+  if (ctx->found) {
+    return 0;
+  }
+
+  char resultBssid[MAX_BSSID_LENGTH] = {0};
+  snprintf(resultBssid, sizeof(resultBssid), "%02x:%02x:%02x:%02x:%02x:%02x",
+           result->bssid[0], result->bssid[1], result->bssid[2], result->bssid[3],
+           result->bssid[4], result->bssid[5]);
+
+  if (strcasecmp(resultBssid, ctx->bssid) == 0 && strlen((const char *)result->ssid) > 0) {
+    strncpy(ctx->ssid, (const char *)result->ssid, sizeof(ctx->ssid) - 1);
+    ctx->ssid[sizeof(ctx->ssid) - 1] = '\0';
+    ctx->found = true;
+  }
+  return 0;
+}
+
+static bool network_resolveSsidByBssidScan(const char *bssid, char *outSsid,
+                                           size_t outSsidSize) {
+  if (bssid == NULL || outSsid == NULL || outSsidSize == 0) {
+    return false;
+  }
+
+  bssid_scan_lookup_ctx_t ctx = {0};
+  strncpy(ctx.bssid, bssid, sizeof(ctx.bssid) - 1);
+  ctx.bssid[sizeof(ctx.bssid) - 1] = '\0';
+
+  cyw43_wifi_scan_options_t scanOptions = {0};
+  int scanErr = cyw43_wifi_scan(&cyw43_state, &scanOptions, &ctx,
+                                network_scanLookupBssidCallback);
+  if (scanErr != 0) {
+    DPRINTF("BSSID scan start failed for %s: %d\n", bssid, scanErr);
+    return false;
+  }
+
+  absolute_time_t scanTimeout = make_timeout_time_ms(6000);
+  while (cyw43_wifi_scan_active(&cyw43_state) &&
+         absolute_time_diff_us(get_absolute_time(), scanTimeout) > 0) {
+#if PICO_CYW43_ARCH_POLL
+    network_safePoll();
+    cyw43_arch_wait_for_work_until(make_timeout_time_ms(50));
+#else
+    sleep_ms(50);
+#endif
+    if (networkPollingCallback != NULL) {
+      networkPollingCallback();
+    }
+  }
+
+  if (!ctx.found) {
+    return false;
+  }
+
+  strncpy(outSsid, ctx.ssid, outSsidSize - 1);
+  outSsid[outSsidSize - 1] = '\0';
+  return true;
+}
+
 // Setter for the callback function
 void network_setPollingCallback(NetworkPollingCallback callback) {
   networkPollingCallback = callback;
@@ -255,6 +412,10 @@ const char *network_getAuthTypeStringShort(uint16_t connectCode) {
  */
 #ifdef CYW43_WL_GPIO_LED_PIN
 int network_initChipOnly() {
+  if (!cyw43Initialized) {
+    network_safePreInitCleanup();
+  }
+
   if (cyw43Initialized) {
     DPRINTF("WiFi already initialized\n");
     return 0;
@@ -287,6 +448,10 @@ int network_initChipOnly() {
  */
 #ifdef CYW43_WL_GPIO_LED_PIN
 int network_wifiInit(wifi_mode_t mode) {
+  if (!cyw43Initialized) {
+    network_safePreInitCleanup();
+  }
+
   if (cyw43Initialized) {
     DPRINTF("WiFi already initialized\n");
     return 0;
@@ -325,13 +490,16 @@ int network_wifiInit(wifi_mode_t mode) {
     // SSID: PARAM_HOSTNAME + "-" + pico serial
     SettingsConfigEntry *hostnameEntry =
         settings_find_entry(gconfig_getContext(), PARAM_HOSTNAME);
+    bool apSettingsUpdated = false;
     const char *hostname =
         (hostnameEntry && hostnameEntry->value && strlen(hostnameEntry->value))
             ? hostnameEntry->value
             : WIFI_AP_SSID;
-    bool hostname_is_croissant =
-        hostnameEntry && hostnameEntry->value &&
-        strcasecmp(hostnameEntry->value, "croissant") == 0;
+    if (!(hostnameEntry && hostnameEntry->value && strlen(hostnameEntry->value))) {
+      settings_put_string(gconfig_getContext(), PARAM_HOSTNAME, WIFI_AP_HOSTNAME);
+      apSettingsUpdated = true;
+    }
+    bool hostname_is_croissant = (hostname != NULL && strcasecmp(hostname, "croissant") == 0);
     char ssidStr[MAX_SSID_LENGTH] = {0};
     if (hostname_is_croissant) {
       snprintf(ssidStr, sizeof(ssidStr), "%s-%s", hostname, picoSerialStr());
@@ -340,10 +508,31 @@ int network_wifiInit(wifi_mode_t mode) {
     }
     DPRINTF("SSID: %s\n", ssidStr);
 
-    char passwordStr[WIFI_AP_PASS_MAX_LENGTH] = WIFI_AP_PASS;
+    SettingsConfigEntry *passwordEntry =
+        settings_find_entry(gconfig_getContext(), PARAM_WIFI_PASSWORD);
+    char passwordStr[WIFI_AP_PASS_MAX_LENGTH] = {0};
+    if (passwordEntry != NULL && passwordEntry->value != NULL &&
+        strlen(passwordEntry->value) > 0) {
+      strncpy(passwordStr, passwordEntry->value, sizeof(passwordStr) - 1);
+      passwordStr[sizeof(passwordStr) - 1] = '\0';
+    } else {
+      strncpy(passwordStr, WIFI_AP_PASS, sizeof(passwordStr) - 1);
+      passwordStr[sizeof(passwordStr) - 1] = '\0';
+      settings_put_string(gconfig_getContext(), PARAM_WIFI_PASSWORD, WIFI_AP_PASS);
+      apSettingsUpdated = true;
+    }
     DPRINTF("Password: %s\n", passwordStr);
 
-    int authInt = WIFI_AP_AUTH;  // WPA2_AES_PSK
+    SettingsConfigEntry *authEntry =
+        settings_find_entry(gconfig_getContext(), PARAM_WIFI_AUTH);
+    int authInt =
+        (authEntry != NULL && authEntry->value != NULL) ? atoi(authEntry->value)
+                                                        : 0;
+    if (authInt == 0) {
+      authInt = WIFI_AP_AUTH;  // WPA2_AES_PSK
+      settings_put_integer(gconfig_getContext(), PARAM_WIFI_AUTH, WIFI_AP_AUTH);
+      apSettingsUpdated = true;
+    }
 
     DPRINTF("Auth mode: %08x\n", getAuthPicoCode(authInt));
     cyw43_arch_enable_ap_mode(ssidStr, passwordStr, getAuthPicoCode(authInt));
@@ -364,53 +553,24 @@ int network_wifiInit(wifi_mode_t mode) {
     DPRINTF("DHCP server started.\n");
 #endif
 
-#ifdef _DNSSERVER_H_
-    // Start the dns server
-    dns_server_init(&gateway);
-    DPRINTF("DNS server started\n");
-#endif
-
 #if LWIP_MDNS_RESPONDER
     // Set hostname for AP interface and start mDNS
     const char *mdns_name = hostname_is_croissant ? WIFI_AP_HOSTNAME : ssidStr;
     strncpy(wifiHostname, mdns_name, sizeof(wifiHostname));
     netif_set_hostname(netif, wifiHostname);
-    mdns_resp_init();
-    DPRINTF("mDNS host name %s.local (AP)\n", wifiHostname);
-    mdns_resp_add_netif(netif, wifiHostname);
-    mdns_resp_add_service(netif, "croissant_httpd", "_http", DNSSD_PROTO_TCP,
-                          80, srv_txt, NULL);
+    network_setupMdns(netif, wifiHostname, "croissant_httpd");
 #endif
 
     wifiCurrentMode = WIFI_MODE_AP;
-  }
 
-  // Setting the power management
-  uint32_t pmValue = NETWORK_POWER_MGMT_DISABLED;  // 0: Disable PM
-  SettingsConfigEntry *pmEntry =
-      settings_find_entry(gconfig_getContext(), PARAM_WIFI_POWER);
-  if (pmEntry != NULL) {
-    pmValue = strtoul(pmEntry->value, NULL, HEX_BASE);
-  }
-  if (pmValue < NETWORK_POWER_MGMT_MAX_OPTIONS) {
-    switch (pmValue) {
-      case 0:
-        pmValue = NETWORK_POWER_MGMT_DISABLED;  // DISABLED_PM
-        break;
-      case 1:
-        pmValue = CYW43_PERFORMANCE_PM;  // PERFORMANCE_PM
-        break;
-      case 2:
-        pmValue = CYW43_AGGRESSIVE_PM;  // AGGRESSIVE_PM
-        break;
-      case 3:
-        pmValue = CYW43_DEFAULT_PM;  // DEFAULT_PM
-        break;
-      default:
-        pmValue = CYW43_NO_POWERSAVE_MODE;  // NO_POWERSAVE_MODE
-        break;
+    if (apSettingsUpdated) {
+      settings_save(gconfig_getContext(), true);
+      DPRINTF("AP defaults stored in settings.\n");
     }
   }
+
+  // Force highest Wi-Fi performance mode (disable power saving).
+  uint32_t pmValue = NETWORK_POWER_MGMT_DISABLED;
   DPRINTF("Setting power management to: %08x\n", pmValue);
   cyw43_wifi_pm(&cyw43_state, pmValue);
   return 0;
@@ -581,6 +741,33 @@ static void srv_txt(struct mdns_service *service, void *txt_userdata) {
   res = mdns_resp_add_service_txtitem(service, "path=/", 6);
   LWIP_ERROR("mdns add service txt failed\n", (res == ERR_OK), return);
 }
+
+static void network_setupMdns(struct netif *netif, const char *hostname,
+                              const char *serviceName) {
+  if (netif == NULL || hostname == NULL || serviceName == NULL) {
+    return;
+  }
+
+  if (!mdnsResponderInitialized) {
+    mdns_resp_init();
+    mdnsResponderInitialized = true;
+  }
+
+  (void)mdns_resp_remove_netif(netif);
+  err_t netifErr = mdns_resp_add_netif(netif, hostname);
+  if (netifErr != ERR_OK) {
+    DPRINTF("mDNS add netif failed: %d\n", netifErr);
+    return;
+  }
+
+  s8_t slot = mdns_resp_add_service(netif, serviceName, "_http", DNSSD_PROTO_TCP,
+                                    80, srv_txt, NULL);
+  if (slot < 0) {
+    DPRINTF("mDNS add service failed: %d\n", slot);
+    return;
+  }
+  DPRINTF("mDNS host name %s.local\n", hostname);
+}
 #endif
 
 wifi_sta_conn_process_status_t network_wifiStaConnect() {
@@ -614,82 +801,16 @@ wifi_sta_conn_process_status_t network_wifiStaConnect() {
   netif_set_hostname(nif, wifiHostname);
 
 #if LWIP_MDNS_RESPONDER
-  // Setup mdns
-  mdns_resp_init();
-  DPRINTF("mDNS host name %s.local\n", wifiHostname);
-  mdns_resp_add_netif(nif, wifiHostname);
-  mdns_resp_add_service(nif, "sidecart_httpd", "_http", DNSSD_PROTO_TCP, 80,
-                        srv_txt, NULL);
+  // Setup mDNS (safe to call across retries).
+  network_setupMdns(nif, wifiHostname, "sidecart_httpd");
 #endif
 
   // Set callbacks
   netif_set_link_callback(nif, wifiLinkCallback);
   netif_set_status_callback(nif, networkStatusCallback);
 
-  // DHCP or static IP
-  if ((settings_find_entry(gconfig_getContext(), PARAM_WIFI_DHCP) != NULL) &&
-      (settings_find_entry(gconfig_getContext(), PARAM_WIFI_DHCP)->value[0] ==
-           't' ||
-       settings_find_entry(gconfig_getContext(), PARAM_WIFI_DHCP)->value[0] ==
-           'T')) {
-    DPRINTF("DHCP enabled\n");
-  } else {
-    DPRINTF("Static IP enabled\n");
-    dhcp_stop(nif);
-    ip_addr_t ipaddr;
-    ip_addr_t netmask;
-    ip_addr_t gwy;
-    ipaddr.addr = ipaddr_addr(
-        settings_find_entry(gconfig_getContext(), PARAM_WIFI_IP)->value);
-    netmask.addr = ipaddr_addr(
-        settings_find_entry(gconfig_getContext(), PARAM_WIFI_NETMASK)->value);
-    gwy.addr = ipaddr_addr(
-        settings_find_entry(gconfig_getContext(), PARAM_WIFI_GATEWAY)->value);
-    netif_set_addr(nif, &ipaddr, &netmask, &gwy);
-    DPRINTF("IP: %s\n", ipaddr_ntoa(&ipaddr));
-    DPRINTF("Netmask: %s\n", ipaddr_ntoa(&netmask));
-    DPRINTF("Gateway: %s\n", ipaddr_ntoa(&gwy));
-
-    // Now set the DNS
-    // The values in PARAM_WIFI_DNS are separated by commas. Only one or two
-    // values are allowed
-    SettingsConfigEntry *entry =
-        settings_find_entry(gconfig_getContext(), PARAM_WIFI_DNS);
-    if (entry == NULL || entry->value == NULL) {
-      DPRINTF("Error: DNS configuration is missing.\n");
-    } else {
-      char *dns = entry->value;
-      char *dnsCopy = strdup(
-          dns);  // Make a copy of the string to avoid modifying the original
-      if (dnsCopy == NULL) {
-        DPRINTF("Error: Memory allocation failed.\n");
-      } else {
-        char *dns1 = strtok(dnsCopy, ",");
-        char *dns2 = strtok(NULL, ",");
-
-        ip_addr_t dns1Ip;
-        ip_addr_t dns2Ip;
-        if (dns1 == NULL || (dns1Ip.addr = ipaddr_addr(dns1)) == IPADDR_NONE) {
-          DPRINTF("Error: Invalid DNS1 address.\n");
-          free(dnsCopy);  // Free the allocated memory
-        } else {
-          dns_setserver(0, &dns1Ip);
-          DPRINTF("DNS1: %s\n", ipaddr_ntoa(&dns1Ip));
-
-          if (dns2 != NULL) {
-            if ((dns2Ip.addr = ipaddr_addr(dns2)) == IPADDR_NONE) {
-              DPRINTF("Error: Invalid DNS2 address.\n");
-            } else {
-              dns_setserver(1, &dns2Ip);
-              DPRINTF("DNS2: %s\n", ipaddr_ntoa(&dns2Ip));
-            }
-          }
-        }
-      }
-
-      free(dnsCopy);  // Free the copied string after use
-    }
-  }
+  // Always use DHCP in STA mode.
+  DPRINTF("DHCP enabled\n");
   netif_set_up(nif);
 
   cyw43_arch_lwip_end();
@@ -706,6 +827,36 @@ wifi_sta_conn_process_status_t network_wifiStaConnect() {
     DPRINTF("No SSID found in config. Can't connect\n");
     return NETWORK_WIFI_STA_CONN_ERR_NO_SSID;
   }
+  bool connectUsingBssid = false;
+  uint8_t targetBssid[NETWORK_MAC_SIZE] = {0};
+  char targetBssidStr[MAX_BSSID_LENGTH] = {0};
+  char resolvedSsid[MAX_SSID_LENGTH] = {0};
+  const char *targetSsid = ssid->value;
+
+  if (network_parseBssid(ssid->value, targetBssid, targetBssidStr)) {
+    connectUsingBssid = true;
+    if (network_findCachedSsidByBssid(targetBssidStr, resolvedSsid,
+                                      sizeof(resolvedSsid))) {
+      targetSsid = resolvedSsid;
+      DPRINTF(
+          "SSID parameter is BSSID=%s. Using cached SSID='%s' and forcing "
+          "BSSID match.\n",
+          targetBssidStr, targetSsid);
+    } else if (network_resolveSsidByBssidScan(targetBssidStr, resolvedSsid,
+                                              sizeof(resolvedSsid))) {
+      targetSsid = resolvedSsid;
+      DPRINTF(
+          "SSID parameter is BSSID=%s. Resolved SSID='%s' from scan and "
+          "forcing BSSID match.\n",
+          targetBssidStr, targetSsid);
+    } else {
+      DPRINTF("SSID parameter is BSSID=%s. Could not resolve SSID from cache "
+              "or scan; aborting STA connection.\n",
+              targetBssidStr);
+      return NETWORK_WIFI_STA_CONN_ERR_NO_SSID;
+    }
+  }
+
   SettingsConfigEntry *authMode =
       settings_find_entry(gconfig_getContext(), PARAM_WIFI_AUTH);
   if (strlen(authMode->value) == 0) {
@@ -725,13 +876,21 @@ wifi_sta_conn_process_status_t network_wifiStaConnect() {
 
   uint32_t authValue = getAuthPicoCode(atoi(authMode->value));
   int errorCode = 0;
-  DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x. ASYNC\n", ssid->value,
-          passwordValue, authValue);
-  errorCode =
-      cyw43_arch_wifi_connect_async(ssid->value, passwordValue, authValue);
-  free(passwordValue);
+  bool bssidFallbackTried = false;
+  if (connectUsingBssid) {
+    DPRINTF("Connecting to SSID=%s, BSSID=%s, password=%s, auth=%08x. ASYNC\n",
+            targetSsid, targetBssidStr, passwordValue, authValue);
+    errorCode = cyw43_arch_wifi_connect_bssid_async(
+        targetSsid, targetBssid, passwordValue, authValue);
+  } else {
+    DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x. ASYNC\n",
+            targetSsid, passwordValue, authValue);
+    errorCode = cyw43_arch_wifi_connect_async(targetSsid, passwordValue,
+                                              authValue);
+  }
   if (errorCode != 0) {
     DPRINTF("Failed to connect to WiFi: %d\n", errorCode);
+    free(passwordValue);
     return NETWORK_WIFI_STA_CONN_ERR_CONNECTION_FAILED;
   }
 
@@ -763,6 +922,22 @@ wifi_sta_conn_process_status_t network_wifiStaConnect() {
               status);
       prevStatus = status;
     }
+    if (connectUsingBssid && !bssidFallbackTried &&
+        (status == CONNECT_FAILED_ERROR || status == GENERIC_ERROR)) {
+      DPRINTF("BSSID-directed join failed. Retrying SSID-only join for SSID=%s\n",
+              targetSsid);
+      errorCode = cyw43_arch_wifi_connect_async(targetSsid, passwordValue,
+                                                authValue);
+      if (errorCode != 0) {
+        DPRINTF("SSID-only retry start failed: %d\n", errorCode);
+        free(passwordValue);
+        return NETWORK_WIFI_STA_CONN_ERR_CONNECTION_FAILED;
+      }
+      bssidFallbackTried = true;
+      connectUsingBssid = false;
+      prevStatus = DISCONNECTED;
+      continue;
+    }
     if (status == CONNECTED_WIFI_IP) {
 #ifdef BLINK_H
       blink_on();
@@ -773,9 +948,11 @@ wifi_sta_conn_process_status_t network_wifiStaConnect() {
   if (absolute_time_diff_us(get_absolute_time(), wifiConnConnTimeout) <= 0) {
     DPRINTF("WiFi connection timeout\n");
     // Return the error code
+    free(passwordValue);
     return NETWORK_WIFI_STA_CONN_ERR_TIMEOUT;
   }
 
+  free(passwordValue);
   DPRINTF("Connected. Check the connection status...\n");
   return 0;
 }
