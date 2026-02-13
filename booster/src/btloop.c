@@ -15,18 +15,6 @@
 #include "pico/stdlib.h"
 #include "uni.h"
 
-typedef struct {
-  const char *param;
-  bd_addr_t addr;
-  bool valid;
-} bt_allow_entry_t;
-
-static bt_allow_entry_t bt_allow_entries[] = {
-    {PARAM_BT_KEYBOARD, {0}, false},
-    {PARAM_BT_MOUSE, {0}, false},
-    {PARAM_BT_GAMEPAD, {0}, false},
-};
-
 static bt_device_info_t bt_devices[16];
 static size_t bt_devices_count = 0;
 
@@ -99,24 +87,12 @@ static void btloop_persist_pairing(const char *addr_str, const char *type,
   }
 }
 
-static void load_bt_allowlist_entries(void) {
-  for (size_t i = 0;
-       i < (sizeof(bt_allow_entries) / sizeof(bt_allow_entries[0])); ++i) {
-    bt_allow_entries[i].valid = false;
-    SettingsConfigEntry *entry =
-        settings_find_entry(gconfig_getContext(), bt_allow_entries[i].param);
-    if (entry == NULL || entry->value == NULL || entry->value[0] == '\0') {
-      continue;
-    }
-    if (sscanf_bd_addr(entry->value, bt_allow_entries[i].addr) == 1) {
-      bt_allow_entries[i].valid = true;
-      DPRINTF("Loaded BD_ADDR for %s: %s\n", bt_allow_entries[i].param,
-              bd_addr_to_str(bt_allow_entries[i].addr));
-    } else {
-      DPRINTF("Invalid BD_ADDR for %s: '%s'\n", bt_allow_entries[i].param,
-              entry->value);
-    }
-  }
+static void btloop_clear_bt_lists_internal(void) {
+  // Clear all BT stack lists used by this project before pairing/unpair flows.
+  uni_bt_allowlist_remove_all();
+#ifdef ENABLE_BLE
+  gap_whitelist_clear();
+#endif
 }
 
 static void btloop_init(int argc, const char **argv) {
@@ -128,12 +104,7 @@ static void btloop_init(int argc, const char **argv) {
 static void btloop_on_init_complete(void) {
   DPRINTF("btloop: init complete\n");
   btloop_reset_devices_internal();
-  for (size_t i = 0;
-       i < (sizeof(bt_allow_entries) / sizeof(bt_allow_entries[0])); ++i) {
-    if (bt_allow_entries[i].valid) {
-      uni_bt_allowlist_add_addr(bt_allow_entries[i].addr);
-    }
-  }
+  btloop_clear_bt_lists_internal();
   uni_bt_allowlist_list();
   uni_bt_list_keys_unsafe();
   uni_bt_start_scanning_and_autoconnect_unsafe();
@@ -242,8 +213,8 @@ static bool btloop_active = false;
 static bool btloop_initialized = false;
 
 void btloop_enable(void) {
+  btloop_clear_bt_lists_internal();
   if (!btloop_initialized) {
-    load_bt_allowlist_entries();
     // btloop_apply_bt_mode();
     uni_platform_set_custom(btloop_platform());
     uni_init(0, NULL);
@@ -274,7 +245,10 @@ void btloop_get_devices(const bt_device_info_t **devices, size_t *count) {
 
 void btloop_reset_devices(void) { btloop_reset_devices_internal(); }
 
+void btloop_clear_bt_lists(void) { btloop_clear_bt_lists_internal(); }
+
 void btloop_clear_pairings(void) {
+  btloop_clear_bt_lists_internal();
   uni_bt_del_keys_unsafe();
   uni_bt_le_delete_bonded_keys();
   btloop_reset_devices_internal();
