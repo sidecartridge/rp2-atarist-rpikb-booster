@@ -67,40 +67,15 @@ else()
     message(FATAL_ERROR "Unknown BOARD_TYPE: ${BOARD_TYPE}")
 endif()
 
-# Default WiFi STA test parameters (override via environment variables)
-if(DEFINED ENV{STA_TEST_MODE})
-    set(MNGR_STA_TEST_MODE $ENV{STA_TEST_MODE})
-else()
-    set(MNGR_STA_TEST_MODE 0)
-endif()
-
-if(DEFINED ENV{STA_TEST_SSID})
-    set(MNGR_STA_TEST_SSID "$ENV{STA_TEST_SSID}")
-else()
-    set(MNGR_STA_TEST_SSID "")
-endif()
-
-if(DEFINED ENV{STA_TEST_PASSWORD})
-    set(MNGR_STA_TEST_PASSWORD "$ENV{STA_TEST_PASSWORD}")
-else()
-    set(MNGR_STA_TEST_PASSWORD "")
-endif()
-
 # Computer target mask (1=Native, 2=USB, 4=Bluetooth)
 if(DEFINED ENV{COMPUTER_TARGET})
     set(COMPUTER_TARGET $ENV{COMPUTER_TARGET})
 else()
-    set(COMPUTER_TARGET 5)  # Default: Native + Bluetooth
+    set(COMPUTER_TARGET 7)  # Default: Native + USB + Bluetooth
 endif()
 message(STATUS "COMPUTER_TARGET: ${COMPUTER_TARGET}")
 
-set(MNGR_STA_TEST_AUTH 4)
-
 add_compile_definitions(
-    MNGR_STA_TEST_MODE=${MNGR_STA_TEST_MODE}
-    MNGR_STA_TEST_SSID="${MNGR_STA_TEST_SSID}"
-    MNGR_STA_TEST_PASSWORD="${MNGR_STA_TEST_PASSWORD}"
-    MNGR_STA_TEST_AUTH=${MNGR_STA_TEST_AUTH}
     COMPUTER_TARGET=${COMPUTER_TARGET}
 )
 
@@ -203,7 +178,6 @@ target_sources(${PROJECT_NAME} PRIVATE
         settings/settings.c
         cjson/cJSON.c
         dhcpserver/dhcpserver.c
-        dnsserver/dnsserver.c
         btstack_config.h
         sdkconfig.h
         ${BTSTACK_MISSING_SOURCES}        )
@@ -243,8 +217,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/include
     ${CMAKE_CURRENT_LIST_DIR}/..
-    ${CMAKE_CURRENT_LIST_DIR}/dhcpserver
-    ${CMAKE_CURRENT_LIST_DIR}/dnsserver)
+    ${CMAKE_CURRENT_LIST_DIR}/dhcpserver)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     src
