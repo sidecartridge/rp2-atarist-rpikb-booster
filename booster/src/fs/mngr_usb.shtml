@@ -222,6 +222,27 @@
                         </select>
                     </div>
 
+                    <div class="form-row" id="joystick-autoshoot-row">
+                        <label for="joystick-autoshoot">
+                            <strong>Gamepad auto-shoot</strong>
+                            <div class="helper-text">Set auto-shoot speed for USB gamepads (0 = disabled, 1 =
+                                slowest, 10 = fastest).</div>
+                        </label>
+                        <select id="joystick-autoshoot" name="joystick-autoshoot">
+                            <option value="0">0 (disabled)</option>
+                            <option value="1">1 (slowest)</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10 (fastest)</option>
+                        </select>
+                    </div>
+
                     <div class="form-row">
                         <label for="mouse-speed">
                             <strong>Mouse speed</strong>
@@ -252,7 +273,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2025 GOODDATA LABS SLU. All rights reserved.</p>
+        <p>&copy; 2026 GOODDATA LABS SLU. All rights reserved.</p>
     </footer>
 
     <script>
@@ -261,11 +282,13 @@
             var modeCheckbox = document.getElementById("usb-mode");
             var joystickUsb = document.getElementById("joystick-usb");
             var joystickPort = document.getElementById("joystick-port");
+            var joystickAutoshoot = document.getElementById("joystick-autoshoot");
             var mouseOriginal = document.getElementById("mouse-original");
             var mouseSpeed = document.getElementById("mouse-speed");
             var kbLayout = document.getElementById("kb-layout");
             var settingsGroup = document.getElementById("usb-settings-group");
             var joystickPortRow = document.getElementById("joystick-port-row");
+            var joystickAutoshootRow = document.getElementById("joystick-autoshoot-row");
 
             var currentMode = parseInt("<!--#MODE-->", 10);
             var kbFromSsi = "<!--#KBLANG-->".trim().toLowerCase() || "us";
@@ -273,6 +296,7 @@
                 mode: Number.isNaN(currentMode) ? 0 : currentMode,
                 joystickUsb: ("<!--#JUSB-->".trim().toLowerCase() === "true") ? "Yes" : "No",
                 joystickPort: "<!--#JPORT-->".trim() || "1",
+                joystickAutoshoot: "<!--#JASHT-->".trim() || "0",
                 mouseOriginal: ("<!--#MORIG-->".trim().toLowerCase() === "true") ? "Yes" : "No",
                 mouseSpeed: "<!--#MSPEED-->".trim() || "5",
                 kbLayout: kbFromSsi
@@ -282,6 +306,9 @@
                 modeCheckbox.checked = state.mode === 1;
                 joystickUsb.checked = state.joystickUsb === "Yes";
                 joystickPort.value = state.joystickPort;
+                if (joystickAutoshoot) {
+                    joystickAutoshoot.value = state.joystickAutoshoot || "0";
+                }
                 mouseOriginal.checked = state.mouseOriginal === "Yes";
                 mouseSpeed.value = state.mouseSpeed;
                 if (kbLayout) {
@@ -307,6 +334,9 @@
                 if (joystickPortRow) {
                     joystickPortRow.style.display = joystickUsb.checked ? "grid" : "none";
                 }
+                if (joystickAutoshootRow) {
+                    joystickAutoshootRow.style.display = joystickUsb.checked ? "grid" : "none";
+                }
                 updateJoystickPortOptions();
             }
 
@@ -329,6 +359,7 @@
                 payload.push({ name: "MODE", type: "INT", value: modeCheckbox.checked ? "1" : "0" });
                 payload.push({ name: "JOYSTICK_USB", type: "BOOL", value: joystickUsb.checked ? "Yes" : "No" });
                 payload.push({ name: "JOYSTICK_USB_PORT", type: "INT", value: joystickPort.value });
+                payload.push({ name: "JOYSTICK_USB_SHOOT", type: "INT", value: joystickAutoshoot ? joystickAutoshoot.value.toString() : "0" });
                 payload.push({ name: "MOUSE_ORIGINAL", type: "BOOL", value: mouseOriginal.checked ? "Yes" : "No" });
                 payload.push({ name: "MOUSE_SPEED", type: "INT", value: mouseSpeed.value.toString() });
                 if (kbLayout) {
