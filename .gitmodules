@@ -9,5 +9,5 @@
 	url = https://github.com/diegoparrilla/bluepad32.git
 [submodule "rp2-atarist-rpikb"]
 	path = rp2-atarist-rpikb
-	url = ghttps://github.com/sidecartridge/rp2-atarist-rpikb.git
+	url = https://github.com/sidecartridge/rp2-atarist-rpikb.git
 	branch = main
