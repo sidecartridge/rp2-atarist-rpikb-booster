@@ -11,13 +11,39 @@
 
 #include "hardware/vreg.h"
 
-// GPIO for the select ATARI or USB keyboard mode
-#define KBD_ATARI_OUT_3V3_GPIO 7
-#define KBD_USB_OUT_3V3_GPIO 8
+// Board types supported by this project.
+#define BOARD_TARGET_UNKNOWN 0
+#define BOARD_TARGET_CROISSANT_REV2 1
+#define BOARD_TARGET_SOUFFLE_REV2 2
 
+// Board identity values derived from BOARD_TARGET.
+#if defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_CROISSANT_REV2
+#define BOARD_CODENAME "croissant"
+#define BOARD_DISPLAY_NAME "Croissant"
+#elif defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_SOUFFLE_REV2
+#define BOARD_CODENAME "souffle"
+#define BOARD_DISPLAY_NAME "Souffle"
+#else
+#define BOARD_CODENAME "unknown"
+#define BOARD_DISPLAY_NAME "Unknown"
+#error "Unsupported BOARD_TARGET defined. Please define BOARD_TARGET."
+#endif
+
+#define BOARD_HTTPD_SERVICE_NAME BOARD_CODENAME "_httpd"
+
+#if defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_CROISSANT_REV2
 // GPIO for the IKBD interface
 #define KBD_RESET_IN_3V3_GPIO 3
 #define KBD_BD0SEL_3V3_GPIO 6
+// GPIO for the select ATARI or BLUETOOTH keyboard mode
+#define KBD_ATARI_OUT_3V3_GPIO 7
+#define KBD_USB_OUT_3V3_GPIO 8
+#elif defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_SOUFFLE_REV2
+// GPIO for the select BLUETOOTH or USB keyboard mode
+#define KBD_ATARI_OUT_3V3_GPIO 8
+#define KBD_USB_OUT_3V3_GPIO 7
+
+#endif
 
 // Common macros
 #define HEX_BASE 16
@@ -40,7 +66,7 @@
                    "NOT VALID", "NOT VALID", "NOT VALID", "NOT VALID", \
                    "NOT VALID"}
 
-#define BOOSTER_TITLE "SidecarTridge Croissant"
+#define BOOSTER_TITLE "SidecarTridge " BOARD_DISPLAY_NAME
 
 #define CURRENT_APP_NAME_KEY "BOOSTER"
 

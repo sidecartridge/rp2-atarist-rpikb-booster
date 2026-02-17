@@ -57,10 +57,11 @@
   68  // Password can have up to 64 characters + null terminator + padding
 #define WIFI_AP_NETMASK "255.255.255.0"
 #define WIFI_AP_GATEWAY "192.168.4.1"
-#define WIFI_AP_SSID "croissant"
+#define WIFI_AP_SSID BOARD_CODENAME
 #define WIFI_AP_PASS "sidecart"
 #define WIFI_AP_AUTH 5
-#define WIFI_AP_HOSTNAME "croissant"
+#define WIFI_AP_HOSTNAME BOARD_CODENAME
+#define WIFI_AP_HTTPD_SERVICE BOARD_HTTPD_SERVICE_NAME
 #define WIFI_AP_PASS_MAX_LENGTH 9
 
 // Connection errors as an enumeration
