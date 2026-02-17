@@ -11,14 +11,43 @@
 #include "gconfig.h"
 #include "mngr.h"
 #include "network.h"
+#include "hardware/irq.h"
+#include "hardware/resets.h"
+#include "hardware/structs/usb.h"
 #include "pico/btstack_flash_bank.h"
 
+static inline void disable_usb_device_early(void) {
+  // Ensure USB IRQ cannot fire while we shut the controller down.
+  irq_set_enabled(USBCTRL_IRQ, false);
+
+  // Detach from host and power down the transceiver.
+  hw_clear_bits(&usb_hw->sie_ctrl, USB_SIE_CTRL_PULLUP_EN_BITS);
+  hw_set_bits(&usb_hw->sie_ctrl, USB_SIE_CTRL_TRANSCEIVER_PD_BITS);
+
+  // Disconnect controller from PHY/pads.
+  hw_clear_bits(&usb_hw->muxing,
+                USB_USB_MUXING_TO_PHY_BITS | USB_USB_MUXING_TO_EXTPHY_BITS |
+                    USB_USB_MUXING_TO_DIGITAL_PAD_BITS |
+                    USB_USB_MUXING_SOFTCON_BITS);
+#ifdef USB_USB_MUXING_USBPHY_AS_GPIO_BITS
+  // RP2350: additionally route USBPHY as GPIO.
+  hw_set_bits(&usb_hw->muxing, USB_USB_MUXING_USBPHY_AS_GPIO_BITS);
+#endif
+
+  // Keep controller in reset.
+  reset_block_mask(1u << RESET_USBCTRL);
+}
+
 int main() {
-  // Set the clock frequency. 20% overclocking
-  set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
+  // On RP2040/RP2350 boards, fully disable USB early to avoid hangs when a
+  // USB device is present before we configure clocks.
+  disable_usb_device_early();
 
   // Set the voltage
   vreg_set_voltage(RP2040_VOLTAGE);
+
+  // Set the clock frequency. 20% overclocking
+  set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
 
 #if defined(_DEBUG) && (_DEBUG != 0)
   // Initialize chosen serial port

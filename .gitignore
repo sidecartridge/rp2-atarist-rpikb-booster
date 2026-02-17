@@ -53,6 +53,7 @@ dkms.conf
 
 .history/
 build/
+build-*/
 dist/
 build_test/
 secrets.sh

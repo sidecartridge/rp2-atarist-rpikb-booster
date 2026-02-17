@@ -190,7 +190,7 @@
 
                     <div class="form-row">
                         <label for="mouse-original">
-                            <strong>Use original mouse</strong>
+                            <strong>Use original mouse (Experimental)</strong>
                             <div class="helper-text">Keep the original ST mouse or use an USB mouse.</div>
                         </label>
                         <label class="toggle-switch" for="mouse-original" aria-label="Use original mouse">
