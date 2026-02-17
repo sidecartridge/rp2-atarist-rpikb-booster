@@ -228,6 +228,7 @@ static const char *ssi_tags[] = {
     "WDFHOST",   // 22 - WiFi default AP hostname
     "WDFPASS",   // 23 - WiFi default AP password
     "WDFAUTH",   // 24 - WiFi default AP auth mode
+    "RTHLPMSG",  // 25 - Return-to-settings help text (board-specific)
 };
 
 /**
@@ -869,7 +870,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_HOSTNAME);
-      const char *val = (entry && entry->value) ? entry->value : "croissant";
+      const char *val = (entry && entry->value) ? entry->value : WIFI_AP_HOSTNAME;
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
@@ -910,6 +911,23 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
     case 24: /* WDFAUTH */
     {
       printed = snprintf(pcInsert, iInsertLen, "%d", WIFI_AP_AUTH);
+      break;
+    }
+    case 25: /* RTHLPMSG */
+    {
+#if defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_CROISSANT_REV2
+      printed = snprintf(pcInsert, iInsertLen,
+                         "To return to the settings page, power on the Atari ST while "
+                         "holding the RESET button for 10 seconds, then release.");
+#elif defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_SOUFFLE_REV2
+      printed = snprintf(
+          pcInsert, iInsertLen,
+          "To return to the settings page, press the `CONFIG` button at any time.");
+#else
+      printed = snprintf(pcInsert, iInsertLen,
+                         "To return to the settings page, use your board-specific "
+                         "configuration control.");
+#endif
       break;
     }
     default: /* unknown tag */
