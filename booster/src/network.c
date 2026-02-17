@@ -36,6 +36,29 @@ static const char *picoSerialStr() {
   return buf;
 }
 
+static void buildApSsid(const char *hostname, char *outSsid,
+                        size_t outSsidSize) {
+  if (outSsid == NULL || outSsidSize == 0) {
+    return;
+  }
+
+  const char *baseHostname =
+      (hostname != NULL && hostname[0] != '\0') ? hostname : WIFI_AP_HOSTNAME;
+  const char *serial = picoSerialStr();
+  size_t serialLen = strnlen(serial, PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2);
+
+  // Keep the MCU ID suffix visible by truncating the hostname prefix first.
+  if (outSsidSize <= serialLen + 2) {
+    snprintf(outSsid, outSsidSize, "%s", serial);
+    return;
+  }
+
+  size_t maxHostnameLen = outSsidSize - serialLen - 2;
+  int hostnameLen = (int)strnlen(baseHostname, maxHostnameLen);
+  snprintf(outSsid, outSsidSize, "%.*s-%s", hostnameLen, baseHostname,
+           serial);
+}
+
 static uint32_t getCountryCode(char *code, char **validCountryStr) {
   *validCountryStr = "XX";
   // empty configuration select worldwide
@@ -494,18 +517,13 @@ int network_wifiInit(wifi_mode_t mode) {
     const char *hostname =
         (hostnameEntry && hostnameEntry->value && strlen(hostnameEntry->value))
             ? hostnameEntry->value
-            : WIFI_AP_SSID;
+            : WIFI_AP_HOSTNAME;
     if (!(hostnameEntry && hostnameEntry->value && strlen(hostnameEntry->value))) {
       settings_put_string(gconfig_getContext(), PARAM_HOSTNAME, WIFI_AP_HOSTNAME);
       apSettingsUpdated = true;
     }
-    bool hostname_is_croissant = (hostname != NULL && strcasecmp(hostname, "croissant") == 0);
     char ssidStr[MAX_SSID_LENGTH] = {0};
-    if (hostname_is_croissant) {
-      snprintf(ssidStr, sizeof(ssidStr), "%s-%s", hostname, picoSerialStr());
-    } else {
-      snprintf(ssidStr, sizeof(ssidStr), "%s", hostname);
-    }
+    buildApSsid(hostname, ssidStr, sizeof(ssidStr));
     DPRINTF("SSID: %s\n", ssidStr);
 
     SettingsConfigEntry *passwordEntry =
@@ -555,10 +573,11 @@ int network_wifiInit(wifi_mode_t mode) {
 
 #if LWIP_MDNS_RESPONDER
     // Set hostname for AP interface and start mDNS
-    const char *mdns_name = hostname_is_croissant ? WIFI_AP_HOSTNAME : ssidStr;
-    strncpy(wifiHostname, mdns_name, sizeof(wifiHostname));
+    snprintf(wifiHostname, sizeof(wifiHostname), "%s",
+             (hostname != NULL && hostname[0] != '\0') ? hostname
+                                                         : WIFI_AP_HOSTNAME);
     netif_set_hostname(netif, wifiHostname);
-    network_setupMdns(netif, wifiHostname, "croissant_httpd");
+    network_setupMdns(netif, wifiHostname, WIFI_AP_HTTPD_SERVICE);
 #endif
 
     wifiCurrentMode = WIFI_MODE_AP;

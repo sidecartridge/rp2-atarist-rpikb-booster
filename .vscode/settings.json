@@ -16,7 +16,7 @@
     "cmake.configureEnvironment": {
         "STA_TEST_MODE": "1",
         "STA_TEST_SSID": "CHISMEROUTER",
-        "STA_TEST_PASSWORD": "lucifer6",
+        "STA_TEST_PASSWORD": "lucifer6"
     },
     "cmake.buildBeforeRun": true,
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
@@ -26,7 +26,9 @@
     // "cmake.sourceDirectory": "${workspaceFolder}/placeholder/src",
     // "cmake.buildDirectory": "${workspaceFolder}/placeholder/build",
     "cmake.sourceDirectory": "${workspaceFolder}/booster/src",
-    "cmake.buildDirectory": "${workspaceFolder}/booster/build",
+    "cmake.useCMakePresets": "always",
+    "cmake.defaultConfigurePreset": "croissant-debug",
+    "cmake.defaultBuildPreset": "croissant-debug",
     // Disabling error squiggles to reduce clutter, but consider "enabled" for more feedback
     "C_Cpp.errorSquiggles": "disabled",
     "C_Cpp.codeAnalysis.clangTidy.enabled": true,

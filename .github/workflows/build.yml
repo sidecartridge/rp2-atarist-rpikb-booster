@@ -33,8 +33,14 @@ jobs:
     - name: Run - remove interactive
       run: sed -i 's/-it//' /usr/local/bin/stcmd
 
-    - name: Run - Build PICO_W release version
-      run: ./build.sh pico_w release image
+    - name: Run - Build PICO_W CROISSANT release version
+      run: ./build.sh pico2_w release final croissant
 
-    - name: Run - Build PICO_W debug version
-      run: ./build.sh pico_w debug
+    - name: Run - Build PICO_W CROISSANT debug version
+      run: ./build.sh pico2_w debug final croissant
+
+    - name: Run - Build PICO_W SOUFFLE release version
+      run: ./build.sh pico2_w release final souffle
+
+    - name: Run - Build PICO_W SOUFFLE debug version
+      run: ./build.sh pico2_w debug final souffle
