@@ -67,12 +67,11 @@
                 <a class="btn" href="/mngr_wifi.shtml">Advanced network settings</a>
             </div>
         </section>
-
+        <br />
         <section id="help" class="content">
             <h2>Help</h2>
             <p>Need guidance? Refer to the included documentation or contact support using your preferred channel.</p>
-            <p>To return to the settings page, power on the Atari ST while holding the RESET button for 10 seconds, then
-                release.</p>
+            <p><!--#RTHLPMSG--></p>
         </section>
     </main>
 
