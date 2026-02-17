@@ -67,18 +67,6 @@ else()
     message(FATAL_ERROR "Unknown BOARD_TYPE: ${BOARD_TYPE}")
 endif()
 
-# Computer target mask (1=Native, 2=USB, 4=Bluetooth)
-if(DEFINED ENV{COMPUTER_TARGET})
-    set(COMPUTER_TARGET $ENV{COMPUTER_TARGET})
-else()
-    set(COMPUTER_TARGET 7)  # Default: Native + USB + Bluetooth
-endif()
-message(STATUS "COMPUTER_TARGET: ${COMPUTER_TARGET}")
-
-add_compile_definitions(
-    COMPUTER_TARGET=${COMPUTER_TARGET}
-)
-
 # Add the env variable PICO_SDK_PATH if it does not exist
 if(NOT DEFINED ENV{PICO_SDK_PATH})
     set(ENV{PICO_SDK_PATH} ../../pico-sdk)
@@ -317,4 +305,37 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME}  PRIVATE
  HCI_CONTROLLER_CHIPSET_PICOW
+)
+
+# Board target (0=Unknown, 1=Croissant Revision 2, 2=Souffle Revision 2)
+if(DEFINED ENV{BOARD_TARGET})
+    set(BOARD_TARGET $ENV{BOARD_TARGET})
+else()
+    set(BOARD_TARGET 0)
+endif()
+
+if(NOT BOARD_TARGET MATCHES "^[0-2]$")
+    message(FATAL_ERROR "Invalid BOARD_TARGET='${BOARD_TARGET}'. Supported values: 0 (Unknown), 1 (Croissant Revision 2), 2 (Souffle Revision 2).")
+endif()
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    BOARD_TARGET=${BOARD_TARGET}
+)
+message(STATUS "BOARD_TARGET: ${BOARD_TARGET}")
+
+# Computer target mask (1=Native, 2=USB, 4=Bluetooth),
+# derived from board target:
+# - Croissant (1): Native + Bluetooth = 5
+# - Souffle   (2): USB + Bluetooth    = 6
+if(BOARD_TARGET STREQUAL "1")
+    set(COMPUTER_TARGET 5)
+elseif(BOARD_TARGET STREQUAL "2")
+    set(COMPUTER_TARGET 6)
+else()
+    message(FATAL_ERROR "COMPUTER_TARGET mapping requires BOARD_TARGET=1 (Croissant) or 2 (Souffle), got '${BOARD_TARGET}'")
+endif()
+message(STATUS "COMPUTER_TARGET: ${COMPUTER_TARGET}")
+
+add_compile_definitions(
+    COMPUTER_TARGET=${COMPUTER_TARGET}
 )
