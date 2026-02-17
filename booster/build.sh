@@ -4,25 +4,26 @@ set -euo pipefail
 # Down to main path
 cd ..
 
-# Install SDK needed for building
+# Install only the submodules needed by booster.
+# Do not use --remote here: it can desync nested pico-sdk submodules
+# from the pinned SDK tag and break the build.
 git submodule init
-git submodule update --init --recursive
-
-# Update submodules to latest remote state
-echo "Updating submodules to latest remote state..."
-if ! git submodule update --init --recursive --remote; then
-    echo "Warning: submodule --remote update failed. Continuing with pinned versions."
-fi
+git submodule sync -- pico-sdk pico-extras bluepad32
+git submodule update --init --recursive pico-sdk pico-extras bluepad32
 
 # Pin the building versions
 echo "Pinning the SDK versions..."
 cd pico-sdk
-git checkout tags/2.2.0
+git checkout --detach tags/2.2.0
+git submodule sync --recursive
+git submodule update --init --recursive
 cd ..
 
 echo "Pinning the Extras SDK versions..."
 cd pico-extras
-git checkout tags/sdk-2.2.0
+git checkout --detach tags/sdk-2.2.0
+git submodule sync --recursive
+git submodule update --init --recursive
 cd ..
 
 echo "Pinning Bluepad32 submodule version..."
@@ -31,6 +32,8 @@ cd bluepad32
 #git checkout tags/4.2.0
 #git checkout DIS-best-effort
 git checkout No-DIS-Handler
+git submodule sync --recursive
+git submodule update --init --recursive
 cd ..
 
 # Set the environment variables of the SDKs
