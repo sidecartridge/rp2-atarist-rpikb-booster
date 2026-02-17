@@ -139,6 +139,7 @@ fi
 
 # Build full image
 echo "Building full image file..."
+mkdir -p ./dist
 rm -f ./dist/*.uf2
 if [ "$BUILD_TYPE_LOWER" = "release" ]; then
   CORE_UF2="rp2-atarist-rpikb/dist/rp2-ikbd-$BOARD_TYPE-$BOARD_FLAVOR.uf2"
