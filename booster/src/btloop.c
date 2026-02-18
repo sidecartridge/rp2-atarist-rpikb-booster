@@ -213,18 +213,20 @@ static bool btloop_active = false;
 static bool btloop_initialized = false;
 
 void btloop_enable(void) {
-  btloop_clear_bt_lists_internal();
   if (!btloop_initialized) {
     // btloop_apply_bt_mode();
     uni_platform_set_custom(btloop_platform());
     uni_init(0, NULL);
     btloop_initialized = true;
   }
+  btloop_clear_bt_lists_internal();
   btloop_reset_devices_internal();
   btloop_active = true;
 }
 
 void btloop_disable(void) { btloop_active = false; }
+
+bool btloop_is_initialized(void) { return btloop_initialized; }
 
 void btloop_poll(void) {
   if (!btloop_active || !btloop_initialized) {
@@ -245,12 +247,19 @@ void btloop_get_devices(const bt_device_info_t **devices, size_t *count) {
 
 void btloop_reset_devices(void) { btloop_reset_devices_internal(); }
 
-void btloop_clear_bt_lists(void) { btloop_clear_bt_lists_internal(); }
+void btloop_clear_bt_lists(void) {
+  if (!btloop_initialized) {
+    return;
+  }
+  btloop_clear_bt_lists_internal();
+}
 
 void btloop_clear_pairings(void) {
-  btloop_clear_bt_lists_internal();
-  uni_bt_del_keys_unsafe();
-  uni_bt_le_delete_bonded_keys();
+  if (btloop_initialized) {
+    btloop_clear_bt_lists_internal();
+    uni_bt_del_keys_unsafe();
+    uni_bt_le_delete_bonded_keys();
+  }
   btloop_reset_devices_internal();
   settings_put_string(gconfig_getContext(), PARAM_BT_KEYBOARD, "");
   settings_put_string(gconfig_getContext(), PARAM_BT_MOUSE, "");

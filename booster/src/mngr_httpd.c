@@ -583,7 +583,7 @@ const char *cgi_btunpair(int iIndex, int iNumParams, char *pcParam[],
   // Keep BT stack lists clean even on single-unpair operation.
   btloop_clear_bt_lists();
 
-  if (have_addr) {
+  if (have_addr && btloop_is_initialized()) {
 #ifdef ENABLE_CLASSIC
     gap_drop_link_key_for_bd_addr(addr);
 #endif
