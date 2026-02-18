@@ -56,8 +56,10 @@ int __not_in_flash_func(mngr_init)() {
       DPRINTF("Falling back to AP mode.\n");
       // Use AP fallback defaults instead of STA credentials.
       settings_put_integer(gconfig_getContext(), PARAM_WIFI_MODE, WIFI_MODE_AP);
-      settings_put_string(gconfig_getContext(), PARAM_HOSTNAME, WIFI_AP_HOSTNAME);
-      settings_put_string(gconfig_getContext(), PARAM_WIFI_PASSWORD, WIFI_AP_PASS);
+      settings_put_string(gconfig_getContext(), PARAM_HOSTNAME,
+                          WIFI_AP_HOSTNAME);
+      settings_put_string(gconfig_getContext(), PARAM_WIFI_PASSWORD,
+                          WIFI_AP_PASS);
       settings_put_integer(gconfig_getContext(), PARAM_WIFI_AUTH, WIFI_AP_AUTH);
       err = settings_save(gconfig_getContext(), true);
       if (err != 0) {
@@ -94,7 +96,7 @@ void __not_in_flash_func(mngr_loop)() {
   while (true) {
 #if PICO_CYW43_ARCH_POLL
     network_safePoll();
-    cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+    cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #else
     sleep_ms(10);
 #endif
