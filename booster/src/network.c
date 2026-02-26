@@ -17,11 +17,78 @@ static bool mdnsResponderInitialized = false;
 // Static variable to store the callback function
 static NetworkPollingCallback networkPollingCallback = NULL;
 
+// Max-range profile for CYW43:
+// - Keep PM disabled (already done below).
+// - Request highest TX power allowed by firmware/regulatory domain.
+// - Keep chip antenna selected.
+// - In AP mode, use a lower multicast/basic rate for better edge coverage.
+#define NETWORK_MAX_RANGE_QTXPOWER 127u      // 31.75 dBm qdBm request; FW clamps
+#define NETWORK_AP_MRATE_1MBPS_UNITS 2u      // 1 Mbps encoded in 500 Kbps units
+#define NETWORK_ANTENNA_CHIP 0u
+
 #if LWIP_MDNS_RESPONDER
 static void srv_txt(struct mdns_service *service, void *txt_userdata);
 static void network_setupMdns(struct netif *netif, const char *hostname,
                               const char *serviceName);
 #endif
+
+static void network_put_le32(uint8_t *dst, uint32_t value) {
+  dst[0] = (uint8_t)(value & 0xFFu);
+  dst[1] = (uint8_t)((value >> 8) & 0xFFu);
+  dst[2] = (uint8_t)((value >> 16) & 0xFFu);
+  dst[3] = (uint8_t)((value >> 24) & 0xFFu);
+}
+
+static int network_set_ioctl_u32(uint32_t cmd, uint32_t value, uint32_t iface) {
+  uint8_t buf[4];
+  network_put_le32(buf, value);
+  return cyw43_ioctl(&cyw43_state, cmd, sizeof(buf), buf, iface);
+}
+
+static int network_set_iovar_u32(const char *iovar, uint32_t value,
+                                 uint32_t iface) {
+  if (iovar == NULL || iovar[0] == '\0') {
+    return -1;
+  }
+
+  uint8_t buf[64];
+  size_t iovarLen = strlen(iovar) + 1;  // include '\0'
+  if (iovarLen + sizeof(uint32_t) > sizeof(buf)) {
+    return -1;
+  }
+
+  memcpy(buf, iovar, iovarLen);
+  network_put_le32(buf + iovarLen, value);
+  return cyw43_ioctl(&cyw43_state, CYW43_IOCTL_SET_VAR, iovarLen + 4, buf,
+                     iface);
+}
+
+static void network_apply_max_range_profile(wifi_mode_t mode) {
+  int err = network_set_ioctl_u32(CYW43_IOCTL_SET_ANTDIV, NETWORK_ANTENNA_CHIP,
+                                  CYW43_ITF_STA);
+  if (err != 0) {
+    DPRINTF("Max-range: failed to force chip antenna selection: %d\n", err);
+  }
+
+  err = network_set_iovar_u32("qtxpower", NETWORK_MAX_RANGE_QTXPOWER,
+                              CYW43_ITF_STA);
+  if (err != 0) {
+    DPRINTF("Max-range: failed to set qtxpower: %d\n", err);
+  } else {
+    DPRINTF("Max-range: qtxpower requested=%lu (qdBm units)\n",
+            (unsigned long)NETWORK_MAX_RANGE_QTXPOWER);
+  }
+
+  if (mode == WIFI_MODE_AP) {
+    err = network_set_iovar_u32("2g_mrate", NETWORK_AP_MRATE_1MBPS_UNITS,
+                                CYW43_ITF_AP);
+    if (err != 0) {
+      DPRINTF("Max-range: failed to set AP 2g_mrate: %d\n", err);
+    } else {
+      DPRINTF("Max-range: AP 2g_mrate forced to 1 Mbps\n");
+    }
+  }
+}
 
 static const char *picoSerialStr() {
   static char buf[PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2 + 1];
@@ -592,6 +659,9 @@ int network_wifiInit(wifi_mode_t mode) {
   uint32_t pmValue = NETWORK_POWER_MGMT_DISABLED;
   DPRINTF("Setting power management to: %08x\n", pmValue);
   cyw43_wifi_pm(&cyw43_state, pmValue);
+
+  // Apply radio/link profile favoring maximum practical range.
+  network_apply_max_range_profile(mode);
   return 0;
 }
 #endif
