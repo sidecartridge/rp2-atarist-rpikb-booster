@@ -110,10 +110,14 @@
 
     <script>
         (function () {
+            var DEVICE_POLL_INTERVAL_MS = 2000;
             var statusBox = document.getElementById("bt-status");
             var listEl = document.getElementById("device-list");
             var pollTimer = null;
             var isRunning = false;
+            var startStopPending = false;
+            var cleanPending = false;
+            var devicesFetchInFlight = false;
             var btnToggle = document.getElementById("btn-toggle");
             var btnClean = document.getElementById("btn-clean");
             var pairingStatus = document.getElementById("pairing-status");
@@ -135,6 +139,38 @@
                 if (!statusBox) return;
                 statusBox.style.display = "none";
                 statusBox.textContent = "";
+            }
+
+            function setRunningUi(running) {
+                if (btnToggle) {
+                    btnToggle.textContent = running ? "Stop pairing" : "Start pairing";
+                }
+                if (pairingStatus) {
+                    pairingStatus.textContent = running
+                        ? "Pairing is running. Stop to pause scanning."
+                        : "Pairing is stopped.";
+                }
+            }
+
+            function parseJsonResponse(response) {
+                if (!response.ok) {
+                    throw new Error("HTTP " + response.status);
+                }
+                return response.json();
+            }
+
+            function fetchResponseStatus(url) {
+                return fetch(url)
+                    .then(parseJsonResponse)
+                    .then(function (data) {
+                        if (!data || typeof data.status !== "number") {
+                            throw new Error("Unexpected response from the device.");
+                        }
+                        if (data.status !== 200) {
+                            throw new Error((data.message || "Operation failed.").trim());
+                        }
+                        return data;
+                    });
             }
 
             function renderDevices(devices) {
@@ -208,118 +244,140 @@
             }
 
             function fetchDevices() {
+                if (!isRunning || devicesFetchInFlight) return;
+                devicesFetchInFlight = true;
                 fetch("/btlist.cgi")
-                    .then(function (res) {
-                        if (!res.ok) {
-                            throw new Error("http " + res.status);
-                        }
-                        return res.json();
-                    })
+                    .then(parseJsonResponse)
                     .then(function (data) {
                         var devices = data.devices || [];
                         renderDevices(devices);
                         clearStatus();
-                        fetchPairings();
                     })
                     .catch(function () {
-                        // Keep showing scanning message; will try again on next poll.
+                        setStatus("error", "Unable to refresh Bluetooth devices. Retrying...");
+                    })
+                    .then(function () {
+                        devicesFetchInFlight = false;
+                        fetchPairings();
                     });
             }
 
             function fetchPairings() {
                 fetch("/btpairings.cgi")
-                    .then(function (res) {
-                        if (!res.ok) throw new Error();
-                        return res.json();
-                    })
+                    .then(parseJsonResponse)
                     .then(function (data) {
                         renderPairings(data || {});
                     })
                     .catch(function () {
-                        renderPairings({});
+                        // Preserve last known pairings on transient fetch errors.
                     });
             }
 
             function startPolling() {
-                if (isRunning) return;
-                isRunning = true;
-                fetch("/btstart.cgi").catch(function () { });
-                listEl.innerHTML = "<li>Scanning for Bluetooth devices...</li>";
-                fetchDevices();
-                pollTimer = setInterval(fetchDevices, 5000);
-                if (btnToggle) {
-                    btnToggle.textContent = "Stop pairing";
-                }
-                if (pairingStatus) {
-                    pairingStatus.textContent = "Pairing is running. Stop to pause scanning.";
-                }
+                if (isRunning || startStopPending || cleanPending) return;
+                startStopPending = true;
+                fetchResponseStatus("/btstart.cgi")
+                    .then(function () {
+                        isRunning = true;
+                        setRunningUi(true);
+                        listEl.innerHTML = "<li>Scanning for Bluetooth devices...</li>";
+                        clearStatus();
+                        fetchDevices();
+                        if (pollTimer) {
+                            clearInterval(pollTimer);
+                        }
+                        pollTimer = setInterval(fetchDevices, DEVICE_POLL_INTERVAL_MS);
+                    })
+                    .catch(function (err) {
+                        isRunning = false;
+                        setRunningUi(false);
+                        setStatus("error", (err && err.message) ? err.message : "Unable to start pairing.");
+                    })
+                    .then(function () {
+                        startStopPending = false;
+                    });
             }
 
-            function stopPolling() {
+            function stopPolling(options) {
+                var silent = options && options.silent;
                 if (pollTimer) {
                     clearInterval(pollTimer);
                     pollTimer = null;
                 }
-                fetch("/btstop.cgi").catch(function () { });
+                if (!isRunning || startStopPending) {
+                    setRunningUi(false);
+                    return Promise.resolve(false);
+                }
                 isRunning = false;
-                if (btnToggle) {
-                    btnToggle.textContent = "Start pairing";
-                }
-                if (pairingStatus) {
-                    pairingStatus.textContent = "Pairing is stopped.";
-                }
+                setRunningUi(false);
+                startStopPending = true;
+                return fetchResponseStatus("/btstop.cgi")
+                    .then(function () {
+                        if (!silent) clearStatus();
+                        return true;
+                    })
+                    .catch(function (err) {
+                        if (!silent) {
+                            setStatus("error", (err && err.message) ? err.message : "Unable to stop pairing.");
+                        }
+                        return false;
+                    })
+                    .then(function (success) {
+                        startStopPending = false;
+                        return success;
+                    });
             }
 
             function cleanPairings() {
-                fetch("/btclean.cgi")
+                if (cleanPending || startStopPending) return;
+                cleanPending = true;
+                var restartAfterClean = isRunning;
+                stopPolling({ silent: true })
                     .then(function () {
-                        stopPolling();
+                        return fetchResponseStatus("/btclean.cgi");
+                    })
+                    .then(function () {
                         listEl.innerHTML = "<li>Pairings cleared.</li>";
                         clearStatus();
                         fetchPairings();
                     })
-                    .catch(function () {
-                        setStatus("error", "Unable to clear pairings. Please try again.");
+                    .catch(function (err) {
+                        setStatus("error", (err && err.message)
+                            ? err.message
+                            : "Unable to clear pairings. Please try again.");
+                    })
+                    .then(function () {
+                        cleanPending = false;
+                        if (restartAfterClean) {
+                            startPolling();
+                        }
                     });
             }
 
             function unpairDevice(type, label) {
-                fetch("/btunpair.cgi?type=" + encodeURIComponent(type))
-                    .then(function (response) { return response.text(); })
-                    .then(function (text) {
-                        try {
-                            var data = JSON.parse(text);
-                            if (data.status === 200) {
-                                clearStatus();
-                                fetchPairings();
-                            } else {
-                                setStatus("error", data.message || ("Unable to unpair " + label + "."));
-                            }
-                        } catch (e) {
-                            setStatus("error", "Unexpected response from the device.");
-                        }
+                if (cleanPending || startStopPending) return;
+                fetchResponseStatus("/btunpair.cgi?type=" + encodeURIComponent(type))
+                    .then(function () {
+                        clearStatus();
+                        fetchPairings();
                     })
-                    .catch(function () {
-                        setStatus("error", "Network error while unpairing " + label + ".");
+                    .catch(function (err) {
+                        setStatus("error", (err && err.message)
+                            ? err.message
+                            : ("Unable to unpair " + label + "."));
                     });
             }
 
             if (btnClean) {
                 btnClean.addEventListener("click", function () {
-                    var wasRunning = isRunning;
                     cleanPairings();
-                    if (wasRunning) {
-                        // Restart pairing automatically after cleaning only if it was running.
-                        setTimeout(startPolling, 200);
-                    }
                 });
             }
 
             if (btnToggle) {
                 btnToggle.addEventListener("click", function () {
                     if (isRunning) {
-                        stopPolling();
-                        clearStatus();
+                        stopPolling({ silent: false });
                     } else {
                         startPolling();
                     }
@@ -342,10 +400,11 @@
                 });
             }
 
-            // Initial render of pairings even before starting pairing scan
+            setRunningUi(false);
             fetchPairings();
-            // Pairing now starts/stops via the toggle button only.
-            window.addEventListener("beforeunload", stopPolling);
+            window.addEventListener("beforeunload", function () {
+                stopPolling({ silent: true });
+            });
         })();
     </script>
 </body>
