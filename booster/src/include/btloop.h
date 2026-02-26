@@ -17,6 +17,7 @@ typedef struct {
 void btloop_enable(void);
 void btloop_disable(void);
 bool btloop_is_initialized(void);
+bool btloop_is_active(void);
 void btloop_poll(void);
 void btloop_get_devices(const bt_device_info_t **devices, size_t *count);
 void btloop_reset_devices(void);
