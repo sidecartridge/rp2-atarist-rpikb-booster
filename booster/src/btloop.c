@@ -228,6 +228,8 @@ void btloop_disable(void) { btloop_active = false; }
 
 bool btloop_is_initialized(void) { return btloop_initialized; }
 
+bool btloop_is_active(void) { return btloop_active; }
+
 void btloop_poll(void) {
   if (!btloop_active || !btloop_initialized) {
     return;
