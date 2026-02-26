@@ -261,9 +261,16 @@ if(NOT DEFINED RELEASE_DATE)
         set(RELEASE_DATE ${CURRENT_DATE_TIME})
 endif()
 
-if (NOT DEFINED _DEBUG)
+if("${_DEBUG}" STREQUAL "")
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(_DEBUG 1)
+    else()
         set(_DEBUG 0)
+    endif()
 endif()
+
+# Ensure Bluepad32 gets the same debug define used by the firmware target.
+target_compile_definitions(bluepad32 PRIVATE _DEBUG=${_DEBUG})
 
 # Debug outputs
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
@@ -311,7 +318,7 @@ target_compile_definitions(${PROJECT_NAME}  PRIVATE
 if(DEFINED ENV{BOARD_TARGET})
     set(BOARD_TARGET $ENV{BOARD_TARGET})
 else()
-    set(BOARD_TARGET 0)
+    set(BOARD_TARGET 1)
 endif()
 
 if(NOT BOARD_TARGET MATCHES "^[0-2]$")
