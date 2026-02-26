@@ -19,6 +19,9 @@
 #include "pico/stdlib.h"
 
 #define MNGR_BLINK_PERIOD_MS 500
+// Keep HTTPD / BT servicing latency low in poll mode.
+#define MNGR_WAIT_HTTPD_MS 10
+#define MNGR_WAIT_PAIRING_MS 10
 
 int __not_in_flash_func(mngr_init)() {
   wifi_mode_t wifi_mode_value = WIFI_MODE_AP;
@@ -91,12 +94,22 @@ int __not_in_flash_func(mngr_init)() {
 void __not_in_flash_func(mngr_loop)() {
   // Blink status: keep ATARI steady and blink only the USB output.
   bool usb_active = false;
+  uint32_t wait_ms = MNGR_WAIT_HTTPD_MS;
   absolute_time_t next_blink = make_timeout_time_ms(MNGR_BLINK_PERIOD_MS);
 
   while (true) {
 #if PICO_CYW43_ARCH_POLL
+    bool pairing_active = btloop_is_active();
+    uint32_t target_wait_ms =
+        pairing_active ? MNGR_WAIT_PAIRING_MS : MNGR_WAIT_HTTPD_MS;
+    if (target_wait_ms != wait_ms) {
+      wait_ms = target_wait_ms;
+      DPRINTF("Manager poll wait updated to %lu ms (%s)\n",
+              (unsigned long)wait_ms,
+              pairing_active ? "pairing active" : "pairing inactive");
+    }
     network_safePoll();
-    cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
+    cyw43_arch_wait_for_work_until(make_timeout_time_ms(wait_ms));
 #else
     sleep_ms(10);
 #endif
