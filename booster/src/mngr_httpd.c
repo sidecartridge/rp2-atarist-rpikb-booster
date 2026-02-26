@@ -92,6 +92,77 @@ static bool parse_addr_from_setting_value(const char *value, bd_addr_t addr) {
   return sscanf_bd_addr(addr_buf, addr) == 1;
 }
 
+static size_t json_escape_string(const char *src, char *dst, size_t dst_size) {
+  if (dst_size == 0) {
+    return 0;
+  }
+  if (src == NULL) {
+    dst[0] = '\0';
+    return 0;
+  }
+
+  size_t di = 0;
+  for (size_t si = 0; src[si] != '\0'; si++) {
+    const char *escaped = NULL;
+    switch (src[si]) {
+      case '\"':
+        escaped = "\\\"";
+        break;
+      case '\\':
+        escaped = "\\\\";
+        break;
+      case '\b':
+        escaped = "\\b";
+        break;
+      case '\f':
+        escaped = "\\f";
+        break;
+      case '\n':
+        escaped = "\\n";
+        break;
+      case '\r':
+        escaped = "\\r";
+        break;
+      case '\t':
+        escaped = "\\t";
+        break;
+      default:
+        break;
+    }
+
+    if (escaped != NULL) {
+      size_t escaped_len = strlen(escaped);
+      if (di + escaped_len >= dst_size) {
+        break;
+      }
+      memcpy(dst + di, escaped, escaped_len);
+      di += escaped_len;
+      continue;
+    }
+
+    unsigned char c = (unsigned char)src[si];
+    if (c < 0x20) {
+      if (di + 6 >= dst_size) {
+        break;
+      }
+      int written = snprintf(dst + di, dst_size - di, "\\u%04x", (unsigned)c);
+      if (written <= 0 || (size_t)written >= (dst_size - di)) {
+        break;
+      }
+      di += (size_t)written;
+      continue;
+    }
+
+    if (di + 1 >= dst_size) {
+      break;
+    }
+    dst[di++] = (char)c;
+  }
+
+  dst[di] = '\0';
+  return di;
+}
+
 /**
  * @brief Check if the string starts with specified characters
  * (case-insensitive).
@@ -410,12 +481,18 @@ const char *cgi_btlist(int iIndex, int iNumParams, char *pcParam[],
                         "{\"devices\":[");
   for (size_t i = 0; i < count && offset < (int)sizeof(httpd_json_payload) - 1;
        ++i) {
+    char address_escaped[(sizeof(devices[i].address) * 6) + 1];
+    char name_escaped[(sizeof(devices[i].name) * 6) + 1];
+    char type_escaped[(sizeof(devices[i].type) * 6) + 1];
+    json_escape_string(devices[i].address, address_escaped,
+                       sizeof(address_escaped));
+    json_escape_string(devices[i].name, name_escaped, sizeof(name_escaped));
+    json_escape_string(devices[i].type, type_escaped, sizeof(type_escaped));
     int written = snprintf(
         httpd_json_payload + offset,
         sizeof(httpd_json_payload) - (size_t)offset,
         "%s{\"address\":\"%s\",\"name\":\"%s\",\"type\":\"%s\"}",
-        (i > 0) ? "," : "", devices[i].address, devices[i].name,
-        devices[i].type);
+        (i > 0) ? "," : "", address_escaped, name_escaped, type_escaped);
     if (written < 0) {
       break;
     }
@@ -516,11 +593,24 @@ const char *cgi_btpairings(int iIndex, int iNumParams, char *pcParam[],
   }
 
   memset(httpd_json_payload, 0, sizeof(httpd_json_payload));
+  char kb_addr_escaped[(sizeof(kb_addr) * 6) + 1];
+  char kb_name_escaped[(sizeof(kb_name) * 6) + 1];
+  char ms_addr_escaped[(sizeof(ms_addr) * 6) + 1];
+  char ms_name_escaped[(sizeof(ms_name) * 6) + 1];
+  char gp_addr_escaped[(sizeof(gp_addr) * 6) + 1];
+  char gp_name_escaped[(sizeof(gp_name) * 6) + 1];
+  json_escape_string(kb_addr, kb_addr_escaped, sizeof(kb_addr_escaped));
+  json_escape_string(kb_name, kb_name_escaped, sizeof(kb_name_escaped));
+  json_escape_string(ms_addr, ms_addr_escaped, sizeof(ms_addr_escaped));
+  json_escape_string(ms_name, ms_name_escaped, sizeof(ms_name_escaped));
+  json_escape_string(gp_addr, gp_addr_escaped, sizeof(gp_addr_escaped));
+  json_escape_string(gp_name, gp_name_escaped, sizeof(gp_name_escaped));
   snprintf(httpd_json_payload, sizeof(httpd_json_payload),
            "{\"keyboard\":{\"address\":\"%s\",\"name\":\"%s\"},"
            "\"mouse\":{\"address\":\"%s\",\"name\":\"%s\"},"
            "\"gamepad\":{\"address\":\"%s\",\"name\":\"%s\"}}",
-           kb_addr, kb_name, ms_addr, ms_name, gp_addr, gp_name);
+           kb_addr_escaped, kb_name_escaped, ms_addr_escaped, ms_name_escaped,
+           gp_addr_escaped, gp_name_escaped);
 
   response_status = MNGR_HTTPD_RESPONSE_OK;
   httpd_response_message[0] = '\0';
