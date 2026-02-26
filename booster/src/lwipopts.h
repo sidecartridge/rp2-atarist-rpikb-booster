@@ -21,7 +21,7 @@
 #endif
 
 #define MEM_ALIGNMENT 4
-#define MEM_SIZE 4096
+#define MEM_SIZE 8192
 
 #if defined(_DEBUG) && (_DEBUG != 0)
 #define MEM_SANITY_CHECK 1
@@ -31,9 +31,9 @@
 #define MEM_OVERFLOW_CHECK 0
 #endif
 
-#define MEMP_NUM_PBUF 32
-#define MEMP_NUM_TCP_PCB 12
-#define MEMP_NUM_TCP_SEG 32
+#define MEMP_NUM_PBUF 48
+#define MEMP_NUM_TCP_PCB 16
+#define MEMP_NUM_TCP_SEG 64
 #define MEMP_NUM_ARP_QUEUE 10
 #define PBUF_POOL_SIZE 32
 #define LWIP_ARP 1
@@ -122,7 +122,7 @@
   0  //  Not needed. Sequential API, and therefore for platforms with OSes only.
 
 #define LWIP_TIMERS 1  // Enable timers (needed for HTTPD)
-#define LWIP_HTTPD 0
+#define LWIP_HTTPD 1
 #define LWIP_HTTPD_SSI 1
 #define LWIP_HTTPD_CGI 1
 // don't include the tag comment - less work for the CPU, but may be harder to
@@ -138,8 +138,9 @@
 #define HTTPD_PRECALCULATED_CHECKSUM 1
 #define HTTPD_USE_MEM_POOL 1
 
-#define MEMP_NUM_PARALLEL_HTTPD_CONNS 8
-#define MEMP_NUM_PARALLEL_HTTPD_SSI_CONNS 8
+#define MEMP_NUM_PARALLEL_HTTPD_CONNS 12
+#define MEMP_NUM_PARALLEL_HTTPD_SSI_CONNS 12
+#define LWIP_HTTPD_KILL_OLD_ON_CONNECTIONS_EXCEEDED 1
 
 #define LWIP_HTTPD_ABORT_ON_CLOSE_MEM_ERROR 1
 
@@ -149,7 +150,7 @@
 // If you don't want to use TLS (just a http request) you can avoid linking to
 // mbedtls and remove the following
 #define LWIP_ALTCP 1
-#define MEMP_NUM_ALTCP_PCB 10
+#define MEMP_NUM_ALTCP_PCB 16
 #define LWIP_ALTCP_TLS 1
 #define LWIP_ALTCP_TLS_MBEDTLS 1
 #define ALTCP_MBEDTLS_AUTHMODE MBEDTLS_SSL_VERIFY_NONE
