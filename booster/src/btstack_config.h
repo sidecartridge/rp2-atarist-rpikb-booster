@@ -6,8 +6,10 @@
 
 // BTstack features that can be enabled
 #if defined(_DEBUG) && (_DEBUG != 0)
+#define ENABLE_LOG_DEBUG
 #define ENABLE_LOG_INFO
 #define HAVE_BTSTACK_STDIN
+// #define WANT_HCI_DUMP 1
 #endif
 #define ENABLE_LOG_ERROR
 #define ENABLE_PRINTF_HEXDUMP
@@ -48,7 +50,7 @@
 #define MAX_NR_GATT_CLIENTS 4
 #define MAX_NR_HCI_CONNECTIONS 4
 #define MAX_NR_HID_HOST_CONNECTIONS 4
-#define MAX_NR_HIDS_CLIENTS 1
+#define MAX_NR_HIDS_CLIENTS 4
 #define MAX_NR_HFP_CONNECTIONS 0
 #define MAX_NR_L2CAP_CHANNELS 8
 #define MAX_NR_L2CAP_SERVICES 4
