@@ -1,46 +1,60 @@
 name: Build
 
-# Trigger when a pull request is received
 on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.build_type }} / ${{ matrix.board_flavor }}
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: [ "3.10" ]
-        include:
-          - os: ubuntu-latest
-    steps:  
-    - name: Checkout the code
-      uses: actions/checkout@v3
-  
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+        python-version: ["3.10"]
+        build_type: [release, debug]
+        board_flavor: [croissant, souffle]
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
 
-    - name: Install the Pico Toolchain
-      run: |
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the Pico toolchain
+        run: |
           sudo DEBIAN_FRONTEND=noninteractive apt update
-          sudo DEBIAN_FRONTEND=noninteractive apt install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
-    
-    - name: Install AtariST Toolkit Docker image
-      run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/v1.0.0/install_atarist_toolkit_docker.sh | bash
+          sudo DEBIAN_FRONTEND=noninteractive apt install -y \
+            build-essential \
+            cmake \
+            gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib
 
-    - name: Run - remove interactive
-      run: sed -i 's/-it//' /usr/local/bin/stcmd
+      - name: Install AtariST toolkit Docker image
+        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/install_atarist_toolkit_docker.sh | bash
 
-    - name: Run - Build PICO_W CROISSANT release version
-      run: ./build.sh pico2_w release final croissant
+      - name: Build firmware
+        run: ./build.sh pico2_w ${{ matrix.build_type }} final ${{ matrix.board_flavor }}
 
-    - name: Run - Build PICO_W CROISSANT debug version
-      run: ./build.sh pico2_w debug final croissant
+      - name: Stage artifacts
+        run: |
+          version=$(tr -d '\r\n ' < version.txt)
+          mkdir -p artifacts
+          booster_name="booster-pico2_w-${{ matrix.board_flavor }}.uf2"
+          full_name="ikbd-booster-${version}-full.uf2"
+          staged_full_name="ikbd-booster-${version}-${{ matrix.board_flavor }}-full.uf2"
 
-    - name: Run - Build PICO_W SOUFFLE release version
-      run: ./build.sh pico2_w release final souffle
+          if [ "${{ matrix.build_type }}" = "debug" ]; then
+            booster_name="booster-pico2_w-${{ matrix.board_flavor }}-debug.uf2"
+            full_name="ikbd-booster-${version}-debug-full.uf2"
+            staged_full_name="ikbd-booster-${version}-${{ matrix.board_flavor }}-debug-full.uf2"
+          fi
 
-    - name: Run - Build PICO_W SOUFFLE debug version
-      run: ./build.sh pico2_w debug final souffle
+          cp "booster/dist/${booster_name}" artifacts/
+          cp "dist/${full_name}" "artifacts/${staged_full_name}"
