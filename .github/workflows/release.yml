@@ -3,89 +3,89 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.build_type }} / ${{ matrix.board_flavor }}
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: [ "3.10" ]
-        include:
-          - os: ubuntu-latest
-    steps:  
-    - name: Checkout the code
-      uses: actions/checkout@v3
-  
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+        python-version: ["3.10"]
+        build_type: [release, debug]
+        board_flavor: [croissant, souffle]
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
 
-    - name: Install the Pico Toolchain
-      run: |
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Validate tag matches version.txt
+        run: |
+          version=$(tr -d '\r\n ' < version.txt)
+          if [ "${GITHUB_REF_NAME}" != "${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match version.txt (${version})"
+            exit 1
+          fi
+
+      - name: Install the Pico toolchain
+        run: |
           sudo DEBIAN_FRONTEND=noninteractive apt update
-          sudo DEBIAN_FRONTEND=noninteractive apt install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
-    
-    - name: Install AtariST Toolkit Docker image
-      run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/v1.0.0/install_atarist_toolkit_docker.sh | bash
+          sudo DEBIAN_FRONTEND=noninteractive apt install -y \
+            build-essential \
+            cmake \
+            gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib
 
-    - name: Run - remove interactive
-      run: sed -i 's/-it//' /usr/local/bin/stcmd
+      - name: Install AtariST toolkit Docker image
+        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/install_atarist_toolkit_docker.sh | bash
 
-    - name: Run - Build PICO_W release version
-      run: ./build.sh pico_w release image
+      - name: Build firmware
+        run: ./build.sh pico2_w ${{ matrix.build_type }} final ${{ matrix.board_flavor }}
 
-    - name: Get version from version.txt
-      id: get_version
-      run: echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+      - name: Stage release assets
+        run: |
+          version=$(tr -d '\r\n ' < version.txt)
+          mkdir -p release-assets
+          full_name="ikbd-booster-${version}-full.uf2"
+          staged_name="ikbd-booster-${version}-${{ matrix.board_flavor }}-full.uf2"
 
-    - name: Upload the binaries to release
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: dist/*
-        tag: ${{ github.ref }}
-        release_name: ${{ env.RELEASE_VERSION }}
-        file_glob: true
-        overwrite: true
-        make_latest: true
+          if [ "${{ matrix.build_type }}" = "debug" ]; then
+            full_name="ikbd-booster-${version}-debug-full.uf2"
+            staged_name="ikbd-booster-${version}-${{ matrix.board_flavor }}-debug-full.uf2"
+          fi
 
-    - name: Install boto3 for S3 upload
-      run: |
-        python3 -m pip install --upgrade pip
-        pip3 install boto3
+          cp "dist/${full_name}" "release-assets/${staged_name}"
 
-    - name: Upload artifacts to S3
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_DEFAULT_REGION: us-east-1
-      run: |
-        python3 <<EOF
-        import os
-        import boto3
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.build_type }}-${{ matrix.board_flavor }}
+          if-no-files-found: error
+          path: release-assets/*.uf2
 
-        s3 = boto3.client('s3')
-        release_dir = 'dist'
-        bucket_name = 'atarist.sidecartridge.com'
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: release-*
+          merge-multiple: true
 
-        files_to_upload = [
-          ('SIDECARTVERSION', 'text/plain'),
-          ('upgrade.bin', 'application/octet-stream'),
-        ]
-
-        for fname, content_type in files_to_upload:
-          local_path = os.path.join(release_dir, fname)
-          if not os.path.isfile(local_path):
-            print(f"Skipping {fname}: not found at {local_path}")
-            continue
-          s3_path = fname  # upload at bucket root
-          print(f"Uploading {local_path} to s3://{bucket_name}/{s3_path}")
-          s3.upload_file(
-            local_path,
-            bucket_name,
-            s3_path,
-            ExtraArgs={"ContentType": content_type}
-          )
-        EOF
+      - name: Publish GitHub release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*.uf2
+          generate_release_notes: true
