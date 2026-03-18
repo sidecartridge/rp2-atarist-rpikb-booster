@@ -89,3 +89,41 @@ jobs:
         with:
           files: release-assets/*.uf2
           generate_release_notes: true
+
+      - name: Install dependencies
+        run: |
+          pip install boto3
+
+      - name: Upload artifacts to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          python3 <<'EOF'
+          import os
+          import boto3
+
+          s3 = boto3.client("s3")
+          release_dir = "release-assets"
+          bucket_name = "tosemulator.sidecartridge.com"
+
+          files_to_upload = []
+          for fname in sorted(os.listdir(release_dir)):
+            local_path = os.path.join(release_dir, fname)
+            if not os.path.isfile(local_path):
+              continue
+            files_to_upload.append((local_path, fname, "application/octet-stream"))
+
+          if not files_to_upload:
+            raise SystemExit(f"No release assets found in {release_dir}")
+
+          for local_path, s3_path, content_type in files_to_upload:
+            print(f"Uploading {local_path} to s3://{bucket_name}/{s3_path}")
+            s3.upload_file(
+              local_path,
+              bucket_name,
+              s3_path,
+              ExtraArgs={"ContentType": content_type}
+            )
+          EOF
