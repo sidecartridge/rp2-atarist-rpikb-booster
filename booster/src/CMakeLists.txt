@@ -127,7 +127,7 @@ if (NOT EXISTS ${MAKE_FS_DATA_SCRIPT})
                 )
 endif()
 
-file(GLOB_RECURSE FS_CONTENT ${CMAKE_CURRENT_LIST_DIR}/fs/*)
+file(GLOB_RECURSE FS_CONTENT CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/fs/*)
 
 add_custom_command(
         OUTPUT ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c
