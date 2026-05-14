@@ -19,24 +19,21 @@
             <h2>Welcome</h2>
             <p>Please choose how you want to connect your input devices (Green indicates active mode):</p>
             <div class="mode-grid">
-                <a class="mode-card" data-mode-value="0" data-mode-bit="1" href="/mngr_native.shtml"
-                    style="text-decoration: none;">
+                <a class="mode-card" data-mode-value="0" data-mode-bit="1" href="/mngr_native.shtml">
                     <div class="mode-header">
                         <span class="mode-icon native" aria-hidden="true"></span>
                         <h3>Passthrough Mode</h3>
                     </div>
                     <p>Use the original Atari keyboard, mouse and joystick.</p>
                 </a>
-                <a class="mode-card" data-mode-value="1" data-mode-bit="2" href="/mngr_usb.shtml"
-                    style="text-decoration: none;">
+                <a class="mode-card" data-mode-value="1" data-mode-bit="2" href="/mngr_usb.shtml">
                     <div class="mode-header">
                         <span class="mode-icon usb" aria-hidden="true"></span>
                         <h3>USB Mode</h3>
                     </div>
                     <p>Connect your USB keyboard, mouse and joystick/gamepad via USB</p>
                 </a>
-                <a class="mode-card" data-mode-value="2" data-mode-bit="4" href="/mngr_bt.shtml"
-                    style="text-decoration: none;">
+                <a class="mode-card" data-mode-value="2" data-mode-bit="4" href="/mngr_bt.shtml">
                     <div class="mode-header">
                         <span class="mode-icon bluetooth" aria-hidden="true"></span>
                         <h3>Bluetooth Mode</h3>

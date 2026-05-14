@@ -477,6 +477,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  text-decoration: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
