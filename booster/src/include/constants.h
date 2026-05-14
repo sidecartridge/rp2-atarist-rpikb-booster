@@ -58,11 +58,11 @@
 // MCU clock / voltage targets. Split per platform so each chip can be tuned
 // independently.
 #if PICO_RP2350
-#define MCU_CLOCK_FREQ_KHZ 125000
-#define MCU_VOLTAGE VREG_VOLTAGE_1_10
+#define MCU_CLOCK_FREQ_KHZ 48000
+#define MCU_VOLTAGE VREG_VOLTAGE_0_90
 #elif PICO_RP2040
-#define MCU_CLOCK_FREQ_KHZ 125000
-#define MCU_VOLTAGE VREG_VOLTAGE_1_10
+#define MCU_CLOCK_FREQ_KHZ 48000
+#define MCU_VOLTAGE VREG_VOLTAGE_0_95
 #else
 #error "Unsupported PICO platform: define MCU_CLOCK_FREQ_KHZ and MCU_VOLTAGE for this chip."
 #endif
