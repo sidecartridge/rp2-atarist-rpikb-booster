@@ -191,10 +191,40 @@ add_dependencies(${PROJECT_NAME} fsdata_srv_target)
 # and rejects the RP2350 .stack_dummy PT_LOAD at 0x20081000. Pass --platform
 # explicitly so range validation uses the correct chip model.
 # See docs/known-issues/picotool-find-binary-start.md.
-if(PICO_PLATFORM MATCHES "^rp2350")
-    set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2350")
-elseif(PICO_PLATFORM MATCHES "^rp2040")
-    set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2040")
+#
+# The --platform flag was added after the pico-sdk 2.2.0 picotool tag, so
+# probe the picotool we will actually use and only pass it if supported.
+# Older picotool versions don't have the find_binary_start bug, so omitting
+# the flag is safe there.
+set(_BOOSTER_PICOTOOL_PATH "")
+if (DEFINED ENV{PICOTOOL_OVERRIDE_DIR})
+    set(_BOOSTER_PICOTOOL_PATH "$ENV{PICOTOOL_OVERRIDE_DIR}/picotool")
+elseif (TARGET picotool)
+    get_target_property(_BOOSTER_PICOTOOL_PATH picotool IMPORTED_LOCATION)
+endif()
+
+set(_BOOSTER_PICOTOOL_HAS_PLATFORM 0)
+if (_BOOSTER_PICOTOOL_PATH AND EXISTS "${_BOOSTER_PICOTOOL_PATH}")
+    execute_process(
+        COMMAND "${_BOOSTER_PICOTOOL_PATH}" help uf2 convert
+        OUTPUT_VARIABLE _BOOSTER_PICOTOOL_HELP
+        ERROR_VARIABLE  _BOOSTER_PICOTOOL_HELP_ERR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if ("${_BOOSTER_PICOTOOL_HELP}${_BOOSTER_PICOTOOL_HELP_ERR}" MATCHES "--platform")
+        set(_BOOSTER_PICOTOOL_HAS_PLATFORM 1)
+    endif()
+endif()
+
+if (_BOOSTER_PICOTOOL_HAS_PLATFORM)
+    message(STATUS "picotool supports --platform; applying find_binary_start workaround")
+    if(PICO_PLATFORM MATCHES "^rp2350")
+        set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2350")
+    elseif(PICO_PLATFORM MATCHES "^rp2040")
+        set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2040")
+    endif()
+else()
+    message(STATUS "picotool does not support --platform; skipping find_binary_start workaround (older picotool without the bug)")
 endif()
 
 # Create map/bin/hex/uf2 files
