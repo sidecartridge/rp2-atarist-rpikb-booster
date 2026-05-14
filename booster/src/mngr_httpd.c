@@ -274,32 +274,27 @@ static char *get_status_message(mngr_httpd_response_status_t status,
  */
 static const char *ssi_tags[] = {
     // Max size of SSI tag is 8 chars
-    "HOMEPAGE",  // 0 - Redirect to the homepage
-    "SSID",      // 1 - SSID
-    "IPADDR",    // 2 - IP address
-    "JSONPLD",   // 3 - JSON payload
-    "TITLEHDR",  // 4 - Title header
-    "RSPSTS",    // 5 - Response status
-    "RSPMSG",    // 6 - Response message
-    "MODE",      // 7 - IKBD emulation mode
-    "JUSB",      // 8 - Joystick over USB enabled
-    "JPORT",     // 9 - Joystick USB port
-    "MORIG",     // 10 - Original mouse passthrough
-    "MSPEED",    // 11 - Mouse speed
-    "KBLANG",    // 12 - USB keyboard layout
-    "BTKBL",     // 13 - BT keyboard layout
-    "CTARGET",   // 14 - Computer target mask
-    "BTGSHT",    // 15 - BT gamepad auto-shoot speed
-    "JASHT",     // 16 - USB joystick auto-shoot speed
-    "WFIMODE",   // 17 - WiFi mode (0=AP,1=STA)
-    "WFIHOST",   // 18 - WiFi hostname
-    "WFISSID",   // 19 - WiFi SSID
-    "WFIPASS",   // 20 - WiFi password
-    "WFIAUTH",   // 21 - WiFi auth mode
-    "WDFHOST",   // 22 - WiFi default AP hostname
-    "WDFPASS",   // 23 - WiFi default AP password
-    "WDFAUTH",   // 24 - WiFi default AP auth mode
-    "RTHLPMSG",  // 25 - Return-to-settings help text (board-specific)
+    "JSONPLD",   // 0 - JSON payload
+    "TITLEHDR",  // 1 - Title header
+    "RSPSTS",    // 2 - Response status
+    "RSPMSG",    // 3 - Response message
+    "MODE",      // 4 - IKBD emulation mode
+    "JUSB",      // 5 - Joystick over USB enabled
+    "JPORT",     // 6 - Joystick USB port
+    "MORIG",     // 7 - Original mouse passthrough
+    "MSPEED",    // 8 - Mouse speed
+    "KBLANG",    // 9 - USB keyboard layout
+    "BTKBL",     // 10 - BT keyboard layout
+    "CTARGET",   // 11 - Computer target mask
+    "BTGSHT",    // 12 - BT gamepad auto-shoot speed
+    "JASHT",     // 13 - USB joystick auto-shoot speed
+    "WFIMODE",   // 14 - WiFi mode (0=AP,1=STA)
+    "WFIHOST",   // 15 - WiFi hostname
+    "WFISSID",   // 16 - WiFi SSID
+    "WFIPASS",   // 17 - WiFi password
+    "WFIAUTH",   // 18 - WiFi auth mode
+    "WDFHOST",   // 19 - WiFi default AP hostname
+    "RTHLPMSG",  // 20 - Return-to-settings help text (board-specific)
 };
 
 /**
@@ -780,37 +775,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
   // DPRINTF("SSI handler called with index %d\n", iIndex);
   size_t printed;
   switch (iIndex) {
-    case 0: /* "HOMEPAGE" */
-      // Always to the first step of the configuration
-      printed = snprintf(
-          pcInsert, iInsertLen, "%s",
-          "<meta http-equiv='refresh' content='0;url=/mngr_home.shtml'>");
-      break;
-    case 1: /* "SSID" */
-    {
-      char *ssid =
-          settings_find_entry(gconfig_getContext(), PARAM_WIFI_SSID)->value;
-      if (ssid != NULL) {
-        printed = snprintf(pcInsert, iInsertLen, "%s", ssid);
-      } else {
-        printed =
-            snprintf(pcInsert, iInsertLen,
-                     "<span class=\"text-error\">No network selected</span>");
-      }
-      break;
-    }
-    case 2: /* IPADDR */
-    {
-      ip_addr_t ipaddr = network_getCurrentIp();
-      if (&ipaddr != NULL) {
-        printed = snprintf(pcInsert, iInsertLen, "%s", ip4addr_ntoa(&ipaddr));
-      } else {
-        printed = snprintf(pcInsert, iInsertLen,
-                           "<span class=\"text-error\">No IP address</span>");
-      }
-      break;
-    }
-    case 3: /* JSONPLD */
+    case 0: /* JSONPLD */
     {
       // DPRINTF("SSI JSONPLD handler called with index %d\n", iIndex);
       int chunk_size = 128;
@@ -848,7 +813,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       }
       break;
     }
-    case 4: /* TITLEHDR */
+    case 1: /* TITLEHDR */
     {
 #if _DEBUG == 0
       printed = snprintf(pcInsert, iInsertLen, "%s (%s)", BOOSTER_TITLE,
@@ -859,17 +824,17 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
 #endif
       break;
     }
-    case 5: /* RSPSTS */
+    case 2: /* RSPSTS */
     {
       printed = snprintf(pcInsert, iInsertLen, "%d", response_status);
       break;
     }
-    case 6: /* RSPMSG */
+    case 3: /* RSPMSG */
     {
       printed = snprintf(pcInsert, iInsertLen, "%s", httpd_response_message);
       break;
     }
-    case 7: /* MODE */
+    case 4: /* MODE */
     {
       SettingsConfigEntry *ikbd_mode_param =
           settings_find_entry(gconfig_getContext(), PARAM_MODE);
@@ -877,7 +842,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%i", ikbd_mode);
       break;
     }
-    case 8: /* JUSB */
+    case 5: /* JUSB */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_JOYSTICK_USB);
@@ -885,7 +850,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 9: /* JPORT */
+    case 6: /* JPORT */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_JOYSTICK_USB_PORT);
@@ -893,7 +858,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 10: /* MORIG */
+    case 7: /* MORIG */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_MOUSE_ORIGINAL);
@@ -901,7 +866,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 11: /* MSPEED */
+    case 8: /* MSPEED */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_MOUSE_SPEED);
@@ -909,7 +874,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 12: /* KBLANG */
+    case 9: /* KBLANG */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_USB_KB_LAYOUT);
@@ -919,7 +884,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", lower_buf);
       break;
     }
-    case 13: /* BTKBL */
+    case 10: /* BTKBL */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_BT_KB_LAYOUT);
@@ -929,10 +894,10 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", lower_buf);
       break;
     }
-    case 14: /* CTARGET */
+    case 11: /* CTARGET */
       printed = snprintf(pcInsert, iInsertLen, "%d", COMPUTER_TARGET);
       break;
-    case 15: /* BTGSHT */
+    case 12: /* BTGSHT */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_BT_GAMEPADSHOOT);
@@ -940,7 +905,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 16: /* JASHT */
+    case 13: /* JASHT */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_JOYSTICK_USB_AUTOSHOOT);
@@ -948,7 +913,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 17: /* WFIMODE */
+    case 14: /* WFIMODE */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_WIFI_MODE);
@@ -956,7 +921,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 18: /* WFIHOST */
+    case 15: /* WFIHOST */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_HOSTNAME);
@@ -964,7 +929,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 19: /* WFISSID */
+    case 16: /* WFISSID */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_WIFI_SSID);
@@ -972,7 +937,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 20: /* WFIPASS */
+    case 17: /* WFIPASS */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_WIFI_PASSWORD);
@@ -980,7 +945,7 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 21: /* WFIAUTH */
+    case 18: /* WFIAUTH */
     {
       SettingsConfigEntry *entry =
           settings_find_entry(gconfig_getContext(), PARAM_WIFI_AUTH);
@@ -988,22 +953,12 @@ static u16_t ssi_handler(int iIndex, char *pcInsert, int iInsertLen
       printed = snprintf(pcInsert, iInsertLen, "%s", val);
       break;
     }
-    case 22: /* WDFHOST */
+    case 19: /* WDFHOST */
     {
       printed = snprintf(pcInsert, iInsertLen, "%s", WIFI_AP_HOSTNAME);
       break;
     }
-    case 23: /* WDFPASS */
-    {
-      printed = snprintf(pcInsert, iInsertLen, "%s", WIFI_AP_PASS);
-      break;
-    }
-    case 24: /* WDFAUTH */
-    {
-      printed = snprintf(pcInsert, iInsertLen, "%d", WIFI_AP_AUTH);
-      break;
-    }
-    case 25: /* RTHLPMSG */
+    case 20: /* RTHLPMSG */
     {
 #if defined(BOARD_TARGET) && BOARD_TARGET == BOARD_TARGET_CROISSANT_REV2
       printed = snprintf(pcInsert, iInsertLen,
