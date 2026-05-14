@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title>Factory Reset · <!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <main class="main-content">
+        <section class="content" id="factory-reset">
+            <h2>Factory Reset</h2>
+            <p>This will erase all device configuration &mdash; Wi-Fi credentials, Bluetooth pairings, keyboard / mouse / joystick settings, and the boot mode &mdash; and reboot the device into Booster (configuration) mode so it can be set up from scratch.</p>
+
+            <div class="banner banner-warning">
+                <span class="banner-icon" aria-hidden="true">!</span>
+                <span>This action cannot be undone. All paired Bluetooth devices will need to be re-paired.</span>
+            </div>
+
+            <div id="reset-status" class="banner banner-info" role="status" aria-live="polite" style="display: none;"></div>
+
+            <div class="action-buttons">
+                <button type="button" id="confirm-reset" class="btn btn-danger">I understand, factory reset</button>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2026 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+
+    <script>
+        (function () {
+            var btn = document.getElementById("confirm-reset");
+            var status = document.getElementById("reset-status");
+
+            function show(type, msg) {
+                status.style.display = "block";
+                status.className = "banner banner-" + type;
+                status.textContent = msg;
+            }
+
+            btn.addEventListener("click", function () {
+                btn.disabled = true;
+                btn.textContent = "Resetting...";
+                show("info", "Erasing configuration and Bluetooth pairings, then rebooting...");
+                fetch("/factoryreset.cgi")
+                    .then(function () {
+                        show("success", "Device is rebooting. Wait a few seconds, then reconnect to the configuration AP and reload this UI.");
+                    })
+                    .catch(function () {
+                        // The connection will drop as the device reboots; treat that as expected.
+                        show("success", "Device is rebooting. Wait a few seconds, then reconnect to the configuration AP and reload this UI.");
+                    });
+            });
+        })();
+    </script>
+</body>
+
+</html>

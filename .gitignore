@@ -60,3 +60,7 @@ secrets.sh
 term/atarist/term_firmware.h
 .venv/
 *.uf2
+.claude
+docs/epics/
+docs/known-issues/
+

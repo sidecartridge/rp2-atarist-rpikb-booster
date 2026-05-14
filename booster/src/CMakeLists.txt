@@ -116,10 +116,16 @@ set(CMAKE_C_STANDARD 11)
 # Creates a pico-sdk subdirectory in our project for the libraries
 pico_sdk_init()
 
-# Create the fsdata.c file (regenerate when fs contents change)
+# Generate fsdata_srv.c via the minifying wrapper around makefsdata.
+# generate_fsdata.pl walks fs/ , minifies *.html / *.shtml / *.css /
+# *.inc into a build-only work directory, then runs the lwIP-derived
+# makefsdata script on that copy. Original sources under fs/ are
+# untouched.
 set(MAKE_FS_DATA_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/external/makefsdata)
+set(GENERATE_FS_DATA_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/external/generate_fsdata.pl)
+set(FSDATA_WORK_DIR ${CMAKE_CURRENT_BINARY_DIR}/fsdata_work)
 
-# WARNING: I use a modified version of the makefsdata script to add text/css headers, not supported in the original tool
+# WARNING: uses a modified makefsdata that emits text/css headers (not in upstream).
 if (NOT EXISTS ${MAKE_FS_DATA_SCRIPT})
         file(DOWNLOAD
                 https://github.com/sidecartridge/lwip/blob/c476c83fd7fda8befd4fb3f99bac99cb2f31e9fd/src/apps/http/makefsdata/makefsdata
@@ -127,18 +133,23 @@ if (NOT EXISTS ${MAKE_FS_DATA_SCRIPT})
                 )
 endif()
 
-file(GLOB_RECURSE FS_CONTENT ${CMAKE_CURRENT_LIST_DIR}/fs/*)
+file(GLOB_RECURSE FS_CONTENT CONFIGURE_DEPENDS LIST_DIRECTORIES false
+        ${CMAKE_CURRENT_LIST_DIR}/fs/*)
 
 add_custom_command(
         OUTPUT ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c
-        COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_CURRENT_LIST_DIR}/fsdata.c ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c
-        COMMAND perl ${MAKE_FS_DATA_SCRIPT}
+        COMMAND
+                perl ${GENERATE_FS_DATA_SCRIPT}
+                ${MAKE_FS_DATA_SCRIPT}
+                ${CMAKE_CURRENT_LIST_DIR}/fs
+                ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c
+                ${FSDATA_WORK_DIR}
+        DEPENDS
+                ${GENERATE_FS_DATA_SCRIPT}
+                ${MAKE_FS_DATA_SCRIPT}
+                ${FS_CONTENT}
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-        COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_CURRENT_LIST_DIR}/fsdata.c ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c
-        COMMAND ${CMAKE_COMMAND} -E env /bin/sh -c "printf '#include <stddef.h>\\n#include \"lwip/apps/fs.h\"\\n\\n' > ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c && cat ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c >> ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c"
-        COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c
-        DEPENDS ${FS_CONTENT} ${MAKE_FS_DATA_SCRIPT}
-        COMMENT "Generating fsdata from fs/ directory"
+        COMMENT "Minifying web assets and generating fsdata_srv.c"
         VERBATIM
 )
 
@@ -171,6 +182,50 @@ target_sources(${PROJECT_NAME} PRIVATE
         ${BTSTACK_MISSING_SOURCES}        )
 
 add_dependencies(${PROJECT_NAME} fsdata_srv_target)
+
+# Workaround for picotool find_binary_start bug (picotool >= 2.0.0):
+# picotool's auto-detection misclassifies the booster as RP2040 because the
+# binary doesn't start at FLASH_START (0x10000000) - the IKBD core firmware
+# occupies 0x10000000..0x1011FFFF and the booster begins at 0x10120000 (see
+# memmap_booster_*.ld). Without --platform, picotool falls back to RP2040
+# and rejects the RP2350 .stack_dummy PT_LOAD at 0x20081000. Pass --platform
+# explicitly so range validation uses the correct chip model.
+# See docs/known-issues/picotool-find-binary-start.md.
+#
+# The --platform flag was added after the pico-sdk 2.2.0 picotool tag, so
+# probe the picotool we will actually use and only pass it if supported.
+# Older picotool versions don't have the find_binary_start bug, so omitting
+# the flag is safe there.
+set(_BOOSTER_PICOTOOL_PATH "")
+if (DEFINED ENV{PICOTOOL_OVERRIDE_DIR})
+    set(_BOOSTER_PICOTOOL_PATH "$ENV{PICOTOOL_OVERRIDE_DIR}/picotool")
+elseif (TARGET picotool)
+    get_target_property(_BOOSTER_PICOTOOL_PATH picotool IMPORTED_LOCATION)
+endif()
+
+set(_BOOSTER_PICOTOOL_HAS_PLATFORM 0)
+if (_BOOSTER_PICOTOOL_PATH AND EXISTS "${_BOOSTER_PICOTOOL_PATH}")
+    execute_process(
+        COMMAND "${_BOOSTER_PICOTOOL_PATH}" help uf2 convert
+        OUTPUT_VARIABLE _BOOSTER_PICOTOOL_HELP
+        ERROR_VARIABLE  _BOOSTER_PICOTOOL_HELP_ERR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if ("${_BOOSTER_PICOTOOL_HELP}${_BOOSTER_PICOTOOL_HELP_ERR}" MATCHES "--platform")
+        set(_BOOSTER_PICOTOOL_HAS_PLATFORM 1)
+    endif()
+endif()
+
+if (_BOOSTER_PICOTOOL_HAS_PLATFORM)
+    message(STATUS "picotool supports --platform; applying find_binary_start workaround")
+    if(PICO_PLATFORM MATCHES "^rp2350")
+        set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2350")
+    elseif(PICO_PLATFORM MATCHES "^rp2040")
+        set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2040")
+    endif()
+else()
+    message(STATUS "picotool does not support --platform; skipping find_binary_start workaround (older picotool without the bug)")
+endif()
 
 # Create map/bin/hex/uf2 files
 pico_add_extra_outputs(${PROJECT_NAME})

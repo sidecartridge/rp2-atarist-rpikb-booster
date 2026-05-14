@@ -5,31 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:;base64,=">
-    <title><!--#TITLEHDR--></title>
+    <title>BT Pairing · <!--#TITLEHDR--></title>
     <link rel="stylesheet" href="styles.css">
     <style>
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            align-items: center;
-            gap: 0.5rem 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .form-row label {
-            font-weight: 600;
-            color: #333;
-            margin: 0;
-        }
-
-        .helper-text {
-            font-weight: 400;
-            color: #555;
-            font-size: 0.95rem;
-            display: block;
-            margin-top: 0.15rem;
-        }
-
         .pair-action {
             margin-left: auto;
         }

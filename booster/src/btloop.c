@@ -214,17 +214,41 @@ static bool btloop_initialized = false;
 
 void btloop_enable(void) {
   if (!btloop_initialized) {
-    // btloop_apply_bt_mode();
+    // First-time BT bring-up for this session. uni_init wires Bluepad32 +
+    // BTstack onto the CYW43 chip and, via its on_init_complete callback,
+    // kicks off scanning automatically.
     uni_platform_set_custom(btloop_platform());
     uni_init(0, NULL);
     btloop_initialized = true;
+  } else if (!btloop_active) {
+    // Re-enable after a prior btloop_disable() teardown. HCI is currently
+    // powered off (radio belongs to Wi-Fi). Bring it back up and queue a
+    // scan restart on the BT thread — the _safe variant queues the call so
+    // it executes once HCI reaches HCI_STATE_WORKING.
+    DPRINTF("btloop_enable: re-arming BT (HCI power on + restart scan)\n");
+    hci_power_control(HCI_POWER_ON);
+    uni_bt_start_scanning_and_autoconnect_safe();
   }
   btloop_clear_bt_lists_internal();
   btloop_reset_devices_internal();
   btloop_active = true;
 }
 
-void btloop_disable(void) { btloop_active = false; }
+void btloop_disable(void) {
+  if (!btloop_initialized || !btloop_active) {
+    return;
+  }
+  // Real teardown so Wi-Fi gets the radio back. Sequence:
+  //   1. Stop scanning/inquiry first (closes the pairing window).
+  //   2. hci_power_control(HCI_POWER_OFF) idles the CYW43 BT subsystem.
+  // BTstack TLV link keys at 0x101FE000 and the PARAM_BT_* settings are
+  // persistent and survive HCI_POWER_OFF — paired devices reconnect in
+  // the runtime IKBD core firmware after the next reboot, not here.
+  DPRINTF("btloop_disable: stopping scan and powering off HCI\n");
+  uni_bt_stop_scanning_safe();
+  hci_power_control(HCI_POWER_OFF);
+  btloop_active = false;
+}
 
 bool btloop_is_initialized(void) { return btloop_initialized; }
 

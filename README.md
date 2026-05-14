@@ -25,6 +25,23 @@ Notes:
 - If the `.local` hostname does not resolve, use the IP shown on the device (if
   available) or your OS's connected network details.
 
+## Factory reset
+
+If the device gets stuck in a bad configuration — wrong Wi-Fi credentials,
+broken Bluetooth pairings, or you simply want to hand it to someone else —
+there is a hidden recovery page. It is **not linked from any other screen**;
+you have to type the URL yourself:
+
+- `BOARD_TARGET=1` (CROISSANT): `http://croissant.local/factoryreset.shtml`
+- `BOARD_TARGET=2` (SOUFFLE): `http://souffle.local/factoryreset.shtml`
+
+The page shows a warning and a single confirm button. Clicking it wipes every
+saved setting, forgets every paired Bluetooth keyboard / mouse / gamepad, and
+reboots the device straight back into configuration mode so you can set it up
+from scratch.
+
+This action cannot be undone.
+
 ## Project structure
 
 This repo builds:
