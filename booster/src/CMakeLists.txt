@@ -116,10 +116,16 @@ set(CMAKE_C_STANDARD 11)
 # Creates a pico-sdk subdirectory in our project for the libraries
 pico_sdk_init()
 
-# Create the fsdata.c file (regenerate when fs contents change)
+# Generate fsdata_srv.c via the minifying wrapper around makefsdata.
+# generate_fsdata.pl walks fs/ , minifies *.html / *.shtml / *.css /
+# *.inc into a build-only work directory, then runs the lwIP-derived
+# makefsdata script on that copy. Original sources under fs/ are
+# untouched.
 set(MAKE_FS_DATA_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/external/makefsdata)
+set(GENERATE_FS_DATA_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/external/generate_fsdata.pl)
+set(FSDATA_WORK_DIR ${CMAKE_CURRENT_BINARY_DIR}/fsdata_work)
 
-# WARNING: I use a modified version of the makefsdata script to add text/css headers, not supported in the original tool
+# WARNING: uses a modified makefsdata that emits text/css headers (not in upstream).
 if (NOT EXISTS ${MAKE_FS_DATA_SCRIPT})
         file(DOWNLOAD
                 https://github.com/sidecartridge/lwip/blob/c476c83fd7fda8befd4fb3f99bac99cb2f31e9fd/src/apps/http/makefsdata/makefsdata
@@ -127,18 +133,23 @@ if (NOT EXISTS ${MAKE_FS_DATA_SCRIPT})
                 )
 endif()
 
-file(GLOB_RECURSE FS_CONTENT CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/fs/*)
+file(GLOB_RECURSE FS_CONTENT CONFIGURE_DEPENDS LIST_DIRECTORIES false
+        ${CMAKE_CURRENT_LIST_DIR}/fs/*)
 
 add_custom_command(
         OUTPUT ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c
-        COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_CURRENT_LIST_DIR}/fsdata.c ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c
-        COMMAND perl ${MAKE_FS_DATA_SCRIPT}
+        COMMAND
+                perl ${GENERATE_FS_DATA_SCRIPT}
+                ${MAKE_FS_DATA_SCRIPT}
+                ${CMAKE_CURRENT_LIST_DIR}/fs
+                ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c
+                ${FSDATA_WORK_DIR}
+        DEPENDS
+                ${GENERATE_FS_DATA_SCRIPT}
+                ${MAKE_FS_DATA_SCRIPT}
+                ${FS_CONTENT}
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-        COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_CURRENT_LIST_DIR}/fsdata.c ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c
-        COMMAND ${CMAKE_COMMAND} -E env /bin/sh -c "printf '#include <stddef.h>\\n#include \"lwip/apps/fs.h\"\\n\\n' > ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c && cat ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c >> ${CMAKE_CURRENT_LIST_DIR}/fsdata_srv.c"
-        COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_CURRENT_LIST_DIR}/fsdata_raw.c
-        DEPENDS ${FS_CONTENT} ${MAKE_FS_DATA_SCRIPT}
-        COMMENT "Generating fsdata from fs/ directory"
+        COMMENT "Minifying web assets and generating fsdata_srv.c"
         VERBATIM
 )
 
