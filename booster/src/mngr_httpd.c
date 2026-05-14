@@ -21,6 +21,7 @@
 #include "constants.h"
 #include "debug.h"
 #include "gconfig.h"
+#include "hardware/watchdog.h"
 #include "include/btloop.h"
 #include "lwip/apps/httpd.h"
 #include "lwip/err.h"
@@ -687,12 +688,49 @@ const char *cgi_btunpair(int iIndex, int iNumParams, char *pcParam[],
   return "/response.shtml";
 }
 
+const char *cgi_factoryreset(int iIndex, int iNumParams, char *pcParam[],
+                             char *pcValue[]) {
+  (void)iIndex;
+  (void)iNumParams;
+  (void)pcParam;
+  (void)pcValue;
+
+  DPRINTF("Factory reset requested via /factoryreset.cgi\n");
+
+  // Wipe BT TLV (link keys + bonded keys) and clear PARAM_BT_KEYBOARD /
+  // PARAM_BT_MOUSE / PARAM_BT_GAMEPAD. btloop_clear_pairings() also calls
+  // settings_save() but we're about to wipe settings anyway.
+  btloop_clear_pairings();
+
+  // Wipe the GLOBAL_CONFIG_FLASH sector entirely (invalidates the magic
+  // number so a fresh boot loads defaults).
+  SettingsContext *ctx = gconfig_getContext();
+  settings_erase(ctx);
+
+  // Re-initialize the context in-memory. settings_init sees the now-invalid
+  // magic in flash and populates from gconfig.c's defaultEntries[].
+  gconfig_init(NULL);
+
+  // Override PARAM_BOOT_FEATURE so the *next* boot lands back in Booster
+  // (configuration mode). Without this the default value "IKBD" would cause
+  // the device to boot the IKBD core firmware right after the reset.
+  settings_put_string(gconfig_getContext(), PARAM_BOOT_FEATURE, "BOOSTER");
+  settings_save(gconfig_getContext(), true);
+
+  // Schedule a hardware reboot 2 seconds out, giving the HTTPD time to send
+  // the response page back to the browser before the chip resets.
+  watchdog_reboot(0, 0, 2000);
+
+  response_status = MNGR_HTTPD_RESPONSE_OK;
+  snprintf(httpd_response_message, sizeof(httpd_response_message),
+           "Factory reset complete. Rebooting...");
+  return "/response.shtml";
+}
+
 /**
- * @brief Array of CGI handlers for floppy select and eject operations.
+ * @brief Array of CGI handlers wired into the booster HTTPD.
  *
- * This array contains the mappings between the CGI paths and the corresponding
- * handler functions for selecting and ejecting floppy disk images for drive A
- * and drive B.
+ * Maps URI paths to the matching handler in this file.
  */
 static const tCGI cgi_handlers[] = {{"/test.cgi", cgi_test},
                                     {"/saveparams.cgi", cgi_saveparams},
@@ -701,7 +739,9 @@ static const tCGI cgi_handlers[] = {{"/test.cgi", cgi_test},
                                     {"/btstop.cgi", cgi_btstop},
                                     {"/btpairings.cgi", cgi_btpairings},
                                     {"/btclean.cgi", cgi_btclean},
-                                    {"/btunpair.cgi", cgi_btunpair}};
+                                    {"/btunpair.cgi", cgi_btunpair},
+                                    {"/factoryreset.cgi",
+                                     cgi_factoryreset}};
 /**
  * @brief Initializes the HTTP server with optional SSI tags, CGI handlers, and
  * an SSI handler function.
