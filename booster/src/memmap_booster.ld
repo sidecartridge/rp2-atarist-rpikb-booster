@@ -24,7 +24,7 @@
 MEMORY
 {
     /* The booster code must be allocated from 0x10120000 to 0x101DFFFF */
-    FLASH(rx) : ORIGIN = 0x10120000, LENGTH = 768K /* Force to allocate in the BOOSTER APP region */
+    FLASH(rx) : ORIGIN = 0x10120000, LENGTH = 760K /* Force to allocate in the BOOSTER APP region (ends at 0x101DE000 where CONFIG_FLASH begins) */
 
     RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 256k
     SCRATCH_X(rwx) : ORIGIN = 0x20040000, LENGTH = 4k
