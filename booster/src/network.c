@@ -17,13 +17,14 @@ static bool mdnsResponderInitialized = false;
 // Static variable to store the callback function
 static NetworkPollingCallback networkPollingCallback = NULL;
 
-// Max-range profile for CYW43:
-// - Keep PM disabled (already done below).
-// - Request highest TX power allowed by firmware/regulatory domain.
-// - Keep chip antenna selected.
-// - In AP mode, use a lower multicast/basic rate for better edge coverage.
-#define NETWORK_MAX_RANGE_QTXPOWER 127u      // 31.75 dBm qdBm request; FW clamps
-#define NETWORK_AP_MRATE_1MBPS_UNITS 2u      // 1 Mbps encoded in 500 Kbps units
+// Low-power radio profile for CYW43:
+// - Aggressive PM (radio sleeps between beacons; first-byte HTTP latency
+//   bumps slightly after idle, accepted for the config UI use case).
+// - Reduced TX power, sized for same-room range.
+// - Chip antenna pinned (deterministic; no power impact).
+// - AP basic rate is the CYW43 default (no longer forced to 1 Mbps), so
+//   per-beacon airtime stays low and overall radio duty cycle drops.
+#define NETWORK_LOWPOWER_QTXPOWER 64u  // ~16 dBm qdBm request; FW clamps
 #define NETWORK_ANTENNA_CHIP 0u
 
 #if LWIP_MDNS_RESPONDER
@@ -63,30 +64,22 @@ static int network_set_iovar_u32(const char *iovar, uint32_t value,
                      iface);
 }
 
-static void network_apply_max_range_profile(wifi_mode_t mode) {
+static void network_apply_radio_profile(wifi_mode_t mode) {
+  (void)mode;
   int err = network_set_ioctl_u32(CYW43_IOCTL_SET_ANTDIV, NETWORK_ANTENNA_CHIP,
                                   CYW43_ITF_STA);
   if (err != 0) {
-    DPRINTF("Max-range: failed to force chip antenna selection: %d\n", err);
+    DPRINTF("Radio profile: failed to force chip antenna selection: %d\n",
+            err);
   }
 
-  err = network_set_iovar_u32("qtxpower", NETWORK_MAX_RANGE_QTXPOWER,
+  err = network_set_iovar_u32("qtxpower", NETWORK_LOWPOWER_QTXPOWER,
                               CYW43_ITF_STA);
   if (err != 0) {
-    DPRINTF("Max-range: failed to set qtxpower: %d\n", err);
+    DPRINTF("Radio profile: failed to set qtxpower: %d\n", err);
   } else {
-    DPRINTF("Max-range: qtxpower requested=%lu (qdBm units)\n",
-            (unsigned long)NETWORK_MAX_RANGE_QTXPOWER);
-  }
-
-  if (mode == WIFI_MODE_AP) {
-    err = network_set_iovar_u32("2g_mrate", NETWORK_AP_MRATE_1MBPS_UNITS,
-                                CYW43_ITF_AP);
-    if (err != 0) {
-      DPRINTF("Max-range: failed to set AP 2g_mrate: %d\n", err);
-    } else {
-      DPRINTF("Max-range: AP 2g_mrate forced to 1 Mbps\n");
-    }
+    DPRINTF("Radio profile: qtxpower requested=%lu (qdBm units)\n",
+            (unsigned long)NETWORK_LOWPOWER_QTXPOWER);
   }
 }
 
@@ -655,13 +648,15 @@ int network_wifiInit(wifi_mode_t mode) {
     }
   }
 
-  // Force highest Wi-Fi performance mode (disable power saving).
-  uint32_t pmValue = NETWORK_POWER_MGMT_DISABLED;
+  // Enable aggressive CYW43 power saving: the radio sleeps between beacons
+  // and wakes for traffic. First-byte HTTP latency bumps slightly after a
+  // long idle, which is acceptable for the config UI.
+  uint32_t pmValue = NETWORK_POWER_MGMT_AGGRESSIVE;
   DPRINTF("Setting power management to: %08x\n", pmValue);
   cyw43_wifi_pm(&cyw43_state, pmValue);
 
-  // Apply radio/link profile favoring maximum practical range.
-  network_apply_max_range_profile(mode);
+  // Apply low-power radio profile (antenna selection + reduced TX power).
+  network_apply_radio_profile(mode);
   return 0;
 }
 #endif
