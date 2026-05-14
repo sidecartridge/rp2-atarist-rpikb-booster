@@ -172,6 +172,20 @@ target_sources(${PROJECT_NAME} PRIVATE
 
 add_dependencies(${PROJECT_NAME} fsdata_srv_target)
 
+# Workaround for picotool find_binary_start bug (picotool >= 2.0.0):
+# picotool's auto-detection misclassifies the booster as RP2040 because the
+# binary doesn't start at FLASH_START (0x10000000) - the IKBD core firmware
+# occupies 0x10000000..0x1011FFFF and the booster begins at 0x10120000 (see
+# memmap_booster_*.ld). Without --platform, picotool falls back to RP2040
+# and rejects the RP2350 .stack_dummy PT_LOAD at 0x20081000. Pass --platform
+# explicitly so range validation uses the correct chip model.
+# See docs/known-issues/picotool-find-binary-start.md.
+if(PICO_PLATFORM MATCHES "^rp2350")
+    set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2350")
+elseif(PICO_PLATFORM MATCHES "^rp2040")
+    set_target_properties(${PROJECT_NAME} PROPERTIES PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2040")
+endif()
+
 # Create map/bin/hex/uf2 files
 pico_add_extra_outputs(${PROJECT_NAME})
 
