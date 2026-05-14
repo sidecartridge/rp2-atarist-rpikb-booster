@@ -55,16 +55,17 @@
 // Frequency constants.
 #define SAMPLE_DIV_FREQ (1.f)  // Sample frequency division factor.
 
-// MCU clock / voltage targets. Split per platform so each chip can be tuned
+// MCU clock / voltage targets. Split per platform so eory ach chip can be tuned
 // independently.
 #if PICO_RP2350
-#define MCU_CLOCK_FREQ_KHZ 48000
-#define MCU_VOLTAGE VREG_VOLTAGE_0_90
+#define MCU_CLOCK_FREQ_KHZ 96000
+#define MCU_VOLTAGE VREG_VOLTAGE_1_00
 #elif PICO_RP2040
-#define MCU_CLOCK_FREQ_KHZ 48000
+#define MCU_CLOCK_FREQ_KHZ 96000
 #define MCU_VOLTAGE VREG_VOLTAGE_0_95
 #else
-#error "Unsupported PICO platform: define MCU_CLOCK_FREQ_KHZ and MCU_VOLTAGE for this chip."
+#error \
+    "Unsupported PICO platform: define MCU_CLOCK_FREQ_KHZ and MCU_VOLTAGE for this chip."
 #endif
 
 // Voltage constants.
