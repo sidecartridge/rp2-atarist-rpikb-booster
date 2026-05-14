@@ -53,7 +53,13 @@
                             card.style.display = "none";
                             return;
                         }
-                        card.classList.toggle("active", val === modeValue);
+                        var isActive = val === modeValue;
+                        card.classList.toggle("active", isActive);
+                        if (isActive) {
+                            card.setAttribute("aria-current", "page");
+                        } else {
+                            card.removeAttribute("aria-current");
+                        }
                     });
                 })();
             </script>
