@@ -44,10 +44,10 @@ int main() {
   disable_usb_device_early();
 
   // Set the voltage
-  vreg_set_voltage(RP2040_VOLTAGE);
+  vreg_set_voltage(MCU_VOLTAGE);
 
   // Set the clock frequency. 20% overclocking
-  set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
+  set_sys_clock_khz(MCU_CLOCK_FREQ_KHZ, true);
 
 #if defined(_DEBUG) && (_DEBUG != 0)
   // Initialize chosen serial port
@@ -59,8 +59,8 @@ int main() {
           RELEASE_DATE, _DEBUG ? "DEBUG" : "RELEASE");
 
   // Show information about the frequency and voltage
-  int current_clock_frequency_khz = RP2040_CLOCK_FREQ_KHZ;
-  const char* current_voltage = VOLTAGE_VALUES[RP2040_VOLTAGE];
+  int current_clock_frequency_khz = MCU_CLOCK_FREQ_KHZ;
+  const char* current_voltage = VOLTAGE_VALUES[MCU_VOLTAGE];
   DPRINTF("Clock frequency: %i KHz\n", current_clock_frequency_khz);
   DPRINTF("Voltage: %s\n", current_voltage);
   DPRINTF("PICO_FLASH_SIZE_BYTES: %i\n", PICO_FLASH_SIZE_BYTES);

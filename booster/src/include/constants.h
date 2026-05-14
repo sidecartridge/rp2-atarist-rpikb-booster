@@ -53,11 +53,21 @@
 #define SEC_TO_MS 1000
 
 // Frequency constants.
-#define SAMPLE_DIV_FREQ (1.f)         // Sample frequency division factor.
-#define RP2040_CLOCK_FREQ_KHZ 125000  // Clock frequency in KHz (225MHz).
+#define SAMPLE_DIV_FREQ (1.f)  // Sample frequency division factor.
+
+// MCU clock / voltage targets. Split per platform so each chip can be tuned
+// independently.
+#if PICO_RP2350
+#define MCU_CLOCK_FREQ_KHZ 125000
+#define MCU_VOLTAGE VREG_VOLTAGE_1_10
+#elif PICO_RP2040
+#define MCU_CLOCK_FREQ_KHZ 125000
+#define MCU_VOLTAGE VREG_VOLTAGE_1_10
+#else
+#error "Unsupported PICO platform: define MCU_CLOCK_FREQ_KHZ and MCU_VOLTAGE for this chip."
+#endif
 
 // Voltage constants.
-#define RP2040_VOLTAGE VREG_VOLTAGE_1_10  // Voltage in 1.10 Volts.
 #define VOLTAGE_VALUES                                                 \
   (const char *[]){"NOT VALID", "NOT VALID", "NOT VALID", "NOT VALID", \
                    "NOT VALID", "NOT VALID", "0.85v",     "0.90v",     \
@@ -75,7 +85,7 @@
   (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl)
 #define GET_CURRENT_TIME_INTERVAL_MS(start) \
   (uint32_t)((GET_CURRENT_TIME() - start) / \
-             (((uint32_t)RP2040_CLOCK_FREQ_KHZ) / 1000))
+             (((uint32_t)MCU_CLOCK_FREQ_KHZ) / 1000))
 
 // NOLINTBEGIN(readability-identifier-naming)
 extern unsigned int __flash_binary_start;
