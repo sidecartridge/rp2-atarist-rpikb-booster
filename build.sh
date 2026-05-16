@@ -5,27 +5,26 @@ set -euo pipefail
 git submodule init
 git submodule update --init --recursive
 
-# Update core firmware submodule to latest main branch
-# and verify that the working tree points exactly to origin/main.
-echo "Updating rp2-atarist-rpikb submodule to latest main branch..."
+# Resolve the release version from version.txt. The rp2-atarist-rpikb
+# submodule must have a matching tag pushed to origin so this build is
+# reproducible across later commits to its main branch.
+VERSION=$(tr -d '\r\n ' < version.txt)
+echo "Version: $VERSION"
+
+# Pin core firmware submodule to the tag matching $VERSION.
+echo "Pinning rp2-atarist-rpikb submodule to tag $VERSION..."
 git submodule sync -- rp2-atarist-rpikb
-git submodule set-branch --branch main rp2-atarist-rpikb
 # Ensure submodule exists locally before direct git operations.
 git submodule update --init rp2-atarist-rpikb
-# Explicit fetch + checkout avoids stale detached HEAD confusion.
-git -C rp2-atarist-rpikb fetch --prune origin main
-git -C rp2-atarist-rpikb checkout --detach FETCH_HEAD
-
-SUBMODULE_HEAD=$(git -C rp2-atarist-rpikb rev-parse HEAD)
-ORIGIN_MAIN_HEAD=$(git -C rp2-atarist-rpikb rev-parse origin/main)
-if [ "$SUBMODULE_HEAD" != "$ORIGIN_MAIN_HEAD" ]; then
-  echo "ERROR: rp2-atarist-rpikb is not on latest origin/main"
-  echo "  submodule HEAD: $SUBMODULE_HEAD"
-  echo "  origin/main:   $ORIGIN_MAIN_HEAD"
+git -C rp2-atarist-rpikb fetch --prune --tags origin
+if ! git -C rp2-atarist-rpikb rev-parse --verify "refs/tags/$VERSION^{commit}" >/dev/null 2>&1; then
+  echo "ERROR: rp2-atarist-rpikb has no tag '$VERSION'"
+  echo "  Tag and push the rp2-atarist-rpikb release before building."
   exit 1
 fi
-
-echo "rp2-atarist-rpikb HEAD: ${SUBMODULE_HEAD:0:7}"
+git -C rp2-atarist-rpikb checkout --detach "refs/tags/$VERSION"
+SUBMODULE_HEAD=$(git -C rp2-atarist-rpikb rev-parse HEAD)
+echo "rp2-atarist-rpikb on tag $VERSION (HEAD: ${SUBMODULE_HEAD:0:7})"
 
 # Pin the building versions
 echo "Pinning the versions..."
@@ -34,10 +33,6 @@ echo "Pinning the versions..."
 echo "Copy version.txt to each project"
 cp version.txt booster/
 cp version.txt placeholder/
-
-# Display the version information
-VERSION=$(tr -d '\r\n ' < version.txt)
-echo "Version: $VERSION"
 
 # Set the board type to be used for building
 # If nothing passed as first argument, use pico2_w
