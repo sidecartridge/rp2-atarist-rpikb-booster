@@ -16,7 +16,7 @@ echo "Pinning rp2-atarist-rpikb submodule to tag $VERSION..."
 git submodule sync -- rp2-atarist-rpikb
 # Ensure submodule exists locally before direct git operations.
 git submodule update --init rp2-atarist-rpikb
-git -C rp2-atarist-rpikb fetch --prune --tags origin
+git -C rp2-atarist-rpikb fetch --force --prune --tags origin
 if ! git -C rp2-atarist-rpikb rev-parse --verify "refs/tags/$VERSION^{commit}" >/dev/null 2>&1; then
   echo "ERROR: rp2-atarist-rpikb has no tag '$VERSION'"
   echo "  Tag and push the rp2-atarist-rpikb release before building."
