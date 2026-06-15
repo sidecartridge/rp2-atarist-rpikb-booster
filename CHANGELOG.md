@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.2.0 (2026-06-15) - release
+
+A power-and-thermal pass on the keyboard firmware: the adapter does exactly
+the same job at a much lower clock and voltage, so it draws less current
+from the Atari and runs cooler. Everything you do with it — keyboard,
+mouse, joystick, USB and Bluetooth — behaves exactly as before. All of the
+changes in this release are in the IKBD keyboard firmware; the
+configuration app is unchanged.
+
+### What's changed
+
+- **Lower power, runs cooler.** The keyboard firmware now runs at
+  96 MHz / 1.00 V instead of 225 MHz / 1.20 V, and the keyboard emulation
+  core now idles in a low-power wait between its pacing windows instead of
+  busy-spinning the processor. The net effect is noticeably less current
+  drawn from the Atari's keyboard connector and less heat, with no change
+  to how anything behaves. The clock floor is set by the Wi-Fi / Bluetooth
+  radio, which stops responding below ~96 MHz; the keyboard emulation, the
+  Atari serial link and USB are all comfortable well below that.
+- **The mode LED is dimmer (Souffle).** The USB / Bluetooth indicator LED
+  is now dimmed with PWM instead of being driven full-on. It's still
+  clearly lit — but at the new low power level a continuously-on LED was a
+  surprisingly large slice of the total draw.
+
+### What's fixed
+
+- **USB hubs come up more reliably from a cold start.** Some USB hubs
+  occasionally failed to initialize when the adapter was powered on cold.
+  The firmware now gives the hub a moment to stabilize before starting the
+  USB host, so it enumerates reliably.
+
 ## v1.1.0 (2026-05-14) - release
 
 This release focuses on three things you can actually feel when using the
