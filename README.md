@@ -4,6 +4,8 @@ Configuration app for the **rp2-atarist-rpikb** firmware. It runs on the
 Booster firmware and exposes a web UI so you can configure Bluetooth/USB input
 devices and system settings without extra tools.
 
+> 🛒 **Get the hardware:** [Croissant](https://sidecartridge.com/products/sidecartridge-croissant-atari-st/) or [Souffle](https://sidecartridge.com/products/sidecartridge-souffle-mega-st/)
+
 ## What it does
 
 When flashed, the Booster creates a Wi-Fi access point you can connect to and
