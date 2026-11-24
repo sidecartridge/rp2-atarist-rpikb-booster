@@ -35,6 +35,9 @@ jobs:
             exit 1
           fi
 
+      - name: Validate core firmware pin
+        run: bash check_core_pin.sh
+
       - name: Install the Pico toolchain
         run: |
           sudo DEBIAN_FRONTEND=noninteractive apt update
