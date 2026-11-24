@@ -20,7 +20,7 @@ Top-level `build.sh <board_type> <build_type> [release_type] [board_flavor]`:
 
 Two important side effects of root `build.sh`:
 - `rm -rf build/` at the start.
-- Force-syncs `rp2-atarist-rpikb` to `origin/main` and **fails the build if HEAD ≠ origin/main**. Don't run it when the submodule has uncommitted/in-progress core-firmware work unless you've pushed it. `AGENTS.md` covers the non-destructive submodule rules in detail.
+- `git submodule update --init --recursive` checks out every submodule at the commit this repo pins, `rp2-atarist-rpikb` included. That pin (the gitlink) is what the core firmware builds from; no tag is needed to build. Don't run it when the submodule has uncommitted/in-progress core-firmware work. To build against new core work, push it to the core repo (any branch) and commit the new submodule pin here. `AGENTS.md` covers the non-destructive submodule rules in detail.
 
 Iterating on booster-only changes is faster via `cd booster && ./build.sh pico2_w release "" souffle` — same flags, skips the core firmware build/merge. Internally this delegates to CMake presets in `booster/src/CMakePresets.json` (`croissant-debug`, `souffle-debug`, `croissant-release`, `souffle-release`) and writes to `booster/build-<flavor>-<kind>/`, then copies `booster.uf2` to `booster/dist/`. `booster/build.sh` only wipes its own preset-specific build dir, so other-flavor caches survive.
 
@@ -214,8 +214,20 @@ RAM: 512 KB at `0x20000000`, scratch X/Y banks for stacks. **Note the LD file sa
 ## CI / Release
 
 - `.github/workflows/build.yml`: PR + manual trigger. Matrix is {release,debug} × {croissant,souffle}. Always builds `final` (i.e. full merged image). Artifacts staged but not uploaded.
-- `.github/workflows/release.yml`: triggered on `v*` tags. Validates tag matches `version.txt` exactly. Same matrix. Publishes to GitHub Releases (auto-generated notes) **and** uploads UF2s to S3 bucket `tosemulator.sidecartridge.com` via the AWS credentials in repo secrets.
-- `make tag` (from root Makefile) creates and pushes the tag for whatever `version.txt` says.
+- `.github/workflows/release.yml`: triggered on `v*` tags. Validates tag matches `version.txt` exactly, and runs `check_core_pin.sh`: the `rp2-atarist-rpikb` pin at the tagged commit must be the commit of the core repo's tag of the same version. Same matrix. Publishes to GitHub Releases (auto-generated notes) **and** uploads UF2s to S3 bucket `tosemulator.sidecartridge.com` via the AWS credentials in repo secrets.
+- `make tag` (from root Makefile) runs `make check-core-pin` (`check_core_pin.sh`), then creates and pushes the tag for whatever `version.txt` says. So the core firmware is tagged and the submodule moved to that tag before this repo is tagged.
+
+## Release workflow
+
+These rules apply to every new version:
+
+- **A version starts with a release branch.** Create `release/vX.Y.Z` from `main`, where `vX.Y.Z` is exactly what `version.txt` will contain for that release.
+- **One branch per epic, cut from the release branch**, named `epic/NN-<slug>`. All work for the epic is committed there, including the `version.txt` bump in the first epic of a release.
+- **An epic's pull request targets `release/vX.Y.Z`, never `main`.** It is merged only after Diego has verified the epic on real hardware.
+- **Core firmware changes go through the submodule pin.** Work in `rp2-atarist-rpikb` is pushed there first; this repo then commits the new pin on the epic branch. Before the release, the core repo tags the same `vX.Y.Z` and the pin is moved to that tag's commit (`make check-core-pin` passes).
+- **`main` receives the release branch once**, when the whole version is done and verified. Only then is the tag pushed (`make tag`), which triggers the release workflow.
+- **Nothing committed or pushed may name an epic, story, iteration, decision (`D-NN`), constraint (`C-NN`) or the `docs/epics/` folder**: code comments, documentation, changelog, README, commit messages, PR descriptions. Epic branch names (`epic/NN-<slug>`) are the one exception. `docs/epics/` is gitignored, so a planning identifier tells a reader of the repository nothing and cannot be looked up. Write what the code does and why instead. Record the implementing commit hashes in the story's notes. Release check: `git grep -nIiE "EPIC-|STORY-|docs/epics|\b[CD]-[0-9]{2}\b" -- ':!CLAUDE.md' ':!AGENTS.md' ':!.gitignore'` comes back empty.
+- Commit only after Diego has approved the working-tree diff. Commit, push, open and merge pull requests only when Diego asks.
 
 ## Compile-time flags worth knowing
 
