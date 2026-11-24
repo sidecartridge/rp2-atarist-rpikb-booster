@@ -5,26 +5,15 @@ set -euo pipefail
 git submodule init
 git submodule update --init --recursive
 
-# Resolve the release version from version.txt. The rp2-atarist-rpikb
-# submodule must have a matching tag pushed to origin so this build is
-# reproducible across later commits to its main branch.
+# Resolve the release version from version.txt.
 VERSION=$(tr -d '\r\n ' < version.txt)
 echo "Version: $VERSION"
 
-# Pin core firmware submodule to the tag matching $VERSION.
-echo "Pinning rp2-atarist-rpikb submodule to tag $VERSION..."
-git submodule sync -- rp2-atarist-rpikb
-# Ensure submodule exists locally before direct git operations.
-git submodule update --init rp2-atarist-rpikb
-git -C rp2-atarist-rpikb fetch --force --prune --tags origin
-if ! git -C rp2-atarist-rpikb rev-parse --verify "refs/tags/$VERSION^{commit}" >/dev/null 2>&1; then
-  echo "ERROR: rp2-atarist-rpikb has no tag '$VERSION'"
-  echo "  Tag and push the rp2-atarist-rpikb release before building."
-  exit 1
-fi
-git -C rp2-atarist-rpikb checkout --detach "refs/tags/$VERSION"
-SUBMODULE_HEAD=$(git -C rp2-atarist-rpikb rev-parse HEAD)
-echo "rp2-atarist-rpikb on tag $VERSION (HEAD: ${SUBMODULE_HEAD:0:7})"
+# The core firmware builds from the commit the rp2-atarist-rpikb submodule
+# is pinned at in this repository, checked out by the submodule update
+# above. A release also needs that commit to carry the core firmware tag
+# matching $VERSION; check_core_pin.sh checks it when tagging.
+echo "rp2-atarist-rpikb at $(git -C rp2-atarist-rpikb describe --tags --always)"
 
 # Pin the building versions
 echo "Pinning the versions..."
