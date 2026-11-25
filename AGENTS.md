@@ -109,6 +109,14 @@ After a successful build, `dist/` should contain:
 - `rp-booster-<version>.uf2` (or `rp-booster-<version>-<build>.uf2`)
 - If full build: `ikbd-booster-<version>-full.uf2` (or `...-<build>-full.uf2`)
 
+### Developer tools (board and Debug Probe attached)
+
+`tools/dev/` builds out of tree, flashes and checks a board over SWD without touching the
+submodules or the product build directories: `tools/dev/flash.sh <souffle|croissant>
+<release|debug>`, `tools/dev/console.py`, `tools/dev/swd.py` and the hardware harnesses. Read
+`tools/dev/README.md` before using them; its rules (watchdog reset, one owner per probe and UART)
+apply to any manual use of the probe too.
+
 ---
 
 ## Agent workflow rules (read carefully)
@@ -140,7 +148,8 @@ clearly in the final response.
 
 ### No secrets
 
-Do not add tokens/keys/credentials to the repo. Keep config local.
+Do not add tokens/keys/credentials to the repo. Keep config local. The bench Wi-Fi for the
+harnesses lives in the gitignored `tools/dev/bench.env`; never print, log or commit its password.
 
 ---
 

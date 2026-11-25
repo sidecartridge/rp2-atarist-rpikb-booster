@@ -68,14 +68,19 @@ The Booster firmware's job is **configuration only**. Actual Atari ST IKBD emula
 
 ### Cross-firmware handoff (important — easy to miss)
 
-The Booster and the core IKBD firmware are two separate binaries occupying different flash regions in the same merged UF2. A small **boot selector** (built into the core firmware) reads `PARAM_BOOT_FEATURE` from the global config flash region at startup and jumps to whichever image that key points to (`"IKBD"` or `"BOOSTER"`).
+The Booster and the core IKBD firmware are two separate binaries occupying different flash regions in the same merged UF2. The **core firmware always starts first** (it is at `0x10000000`) and enters Booster with `jump_to_booster_app()` in two cases only:
 
-- The Booster sets `PARAM_BOOT_FEATURE=IKBD` *before* entering its loop. So on the **next** reset/power cycle, the system boots into the IKBD core firmware.
-- The web UI's "reboot to IKBD" button just triggers a reset — the work has already been done.
-- To get back into Booster, the user must press a board-specific button (Souffle: `CONFIG`) or hold reset for 10 s on Croissant. The boot selector reads that input and writes `PARAM_BOOT_FEATURE=BOOSTER` before jumping.
-- `gconfig_init()` takes an optional `currentAppName`. If the boot selector passes `"BOOSTER"` and the stored value doesn't match, it returns `GCONFIG_MISMATCHED_APP`. The Booster itself passes `NULL` so the check is bypassed.
+- `PARAM_MODE` is `255` (configuration), or missing or invalid, at boot. A fresh device, or one after a factory reset, has `MODE=255`, so it lands in Booster.
+- The CONFIG button (GPIO 9, pulled down, rising edge) is pressed while a mode loop runs (USB, Bluetooth or native, on both boards), or on Croissant the Atari reset is held for 10 s. No setting is written on the way.
 
-If you change `PARAM_BOOT_FEATURE` semantics, you must also update the boot selector in `rp2-atarist-rpikb/`.
+`PARAM_BOOT_FEATURE` is a check, not a selector:
+
+- The core firmware calls `gconfig_init("IKBD")`. If the stored `BOOT_FEATURE` is anything other than `"IKBD"`, that returns `GCONFIG_MISMATCHED_APP` and the core firmware **erases all settings and reboots**. Never write `BOOT_FEATURE=BOOSTER` to reach Booster: it wipes the board.
+- Booster passes `NULL` to `gconfig_init()` (no check) and writes `BOOT_FEATURE=IKBD` before entering its loop, so the next reset starts the core firmware cleanly.
+- `/factoryreset.cgi` writes `BOOT_FEATURE=BOOSTER` after erasing the settings; it works because the core firmware then sees the mismatch, erases again, reboots, finds `MODE=255` (the default) and jumps to Booster.
+- The web UI's "reboot to IKBD" button just triggers a reset.
+
+If you change how Booster is entered or what `PARAM_BOOT_FEATURE` means, update `rp2-atarist-rpikb/` too.
 
 ### Manager loop (`mngr.c`)
 
@@ -166,7 +171,7 @@ Custom in-RAM cache of a `SettingsConfigEntry[]` array (key/type/value triples),
 - Magic: 32-bit, formed as `(magic << 16) | version` = `0x12340001`. A `MAGICVERSION` entry is written *first* in the blob; `settingsLoadAllEntries` reads that, and if it doesn't match, the entire blob is treated as missing → defaults are loaded.
 - Save path: `flash_range_erase` of the whole sector, then `flash_range_program` of the cached blob. Interrupts disabled during the write (`save_and_disable_interrupts`). Always pass `disable_interrupts=true` from this codebase.
 - Defaults table: `defaultEntries[]` in `gconfig.c`. All keys defined as `#define PARAM_*` in `gconfig.h`.
-- Entry size: `SETTINGS_MAX_KEY_LENGTH=30` + 4 bytes type + `SETTINGS_MAX_VALUE_LENGTH=96`. Mind the 96-byte value cap when storing strings.
+- Entry size: 127 bytes, unaligned: `SETTINGS_MAX_KEY_LENGTH=30` + 1 byte type (the `SettingsDataType` enum is packed to one byte by the ARM EABI) + `SETTINGS_MAX_VALUE_LENGTH=96`. Mind the 96-byte value cap (95 characters and the NUL) when storing strings. On load, a stored key that is not in the running firmware's defaults table is dropped, and gone after the next save: keep Booster's and the core firmware's default key sets identical.
 - The `gconfig` context is a singleton (`gSettingsCtx`). All modules call `gconfig_getContext()`.
 
 The settings module also supports erase/deinit/reinit (used in the STA fallback in `main.c` recovery path). Note: there are *more* flash regions defined in `constants.h` than this code currently uses (`_storage_flash_start`, `_global_lookup_flash_start`); the lookup table is a sidecar feature managed by the boot selector, not by Booster.
@@ -217,6 +222,18 @@ RAM: 512 KB at `0x20000000`, scratch X/Y banks for stacks. **Note the LD file sa
 - `.github/workflows/release.yml`: triggered on `v*` tags. Validates tag matches `version.txt` exactly, and runs `check_core_pin.sh`: the `rp2-atarist-rpikb` pin at the tagged commit must be the commit of the core repo's tag of the same version. Same matrix. Publishes to GitHub Releases (auto-generated notes) **and** uploads UF2s to S3 bucket `tosemulator.sidecartridge.com` via the AWS credentials in repo secrets.
 - `make tag` (from root Makefile) runs `make check-core-pin` (`check_core_pin.sh`), then creates and pushes the tag for whatever `version.txt` says. So the core firmware is tagged and the submodule moved to that tag before this repo is tagged.
 
+## Developer tools
+
+`tools/dev/` (see its `README.md`) builds, flashes and checks a board through a Raspberry Pi Debug Probe wired to the Pico 2 W's SWD pins and its debug UART (GPIO 0/1, 921,600 baud in debug builds). Hardware checks go through these tools rather than by hand:
+
+- `tools/dev/flash.sh <souffle|croissant> <release|debug> [--full]` builds out of tree (never touching the submodules or `booster/build-*`), flashes only the images' own flash (settings and Bluetooth keys kept), runs Booster and verifies flash and build ID over SWD.
+- `tools/dev/console.py watch` captures the debug console; `since-boot`, `grep`, `wait` read it.
+- `tools/dev/swd.py` reads and drives the board without the firmware's help: `board`, `build-id`, `verify`, `settings [set]`, `boot booster|ikbd`, `clock`, `net`, `bt`, `wifi-bench`, `crash`, `heap`, `postmortem`, `reset`.
+- Harnesses (`tools_harness.py`, `boot_harness.py`, `web_harness.py`, `bt_harness.py`) print PASS/FAIL per check and write JSON reports to `tools/dev/logs/`. The web and Bluetooth harnesses use the bench Wi-Fi from the gitignored `tools/dev/bench.env` and restore the settings afterwards.
+- `measure_builds.sh` and `stackdepth.py` give sizes against the 760K slot, heap room and worst-case stack depth.
+
+Every build stamps its git commit in flash (`booster/src/build_id.cmake`, the `release_build_id` string), and the debug banner prints it. The OpenOCD these tools need is `../pico/openocd` (target names `rp2350.cm0`/`cm1`), not the older `../pico/openocd-rp2350` that `.vscode/launch.json` uses.
+
 ## Release workflow
 
 These rules apply to every new version:
@@ -242,8 +259,8 @@ These rules apply to every new version:
 
 ## Things that aren't obvious from any single file
 
-- **Three firmware images, one UF2.** Booster + core IKBD (and historically a `placeholder/`, currently commented out of the build) live at different flash origins and are merged. The boot selector chooses between them based on `PARAM_BOOT_FEATURE` in `GLOBAL_CONFIG_FLASH` (sector at `0x101FD000`).
-- **`PARAM_BOOT_FEATURE=IKBD` is always written by Booster before its loop starts.** This is intentional: every Booster session is followed by an IKBD session on the next reset. To stay in Booster, the user re-enters Booster mode through the board button (handled by the boot selector in `rp2-atarist-rpikb`).
+- **Three firmware images, one UF2.** Booster + core IKBD (and historically a `placeholder/`, currently commented out of the build) live at different flash origins and are merged. The core firmware starts first and jumps to Booster on `MODE=255` or the CONFIG button (see "Cross-firmware handoff").
+- **`PARAM_BOOT_FEATURE=IKBD` is always written by Booster before its loop starts.** This is intentional: every Booster session is followed by an IKBD session on the next reset, unless `MODE` is still 255. To get back into Booster, the user presses CONFIG (Souffle) or holds the Atari reset for 10 s (Croissant); the core firmware handles both.
 - **The settings flash region is shared between Booster and IKBD.** Both write to the same `GLOBAL_CONFIG_FLASH` sector. Coordination is by convention — only one of them runs at a time, so there's no concurrency, but if you change the schema in Booster you must update IKBD to read the new format.
 - **The `fs/` directory is the web UI source of truth.** Edit there, never touch `fsdata_srv.c`.
 - **`PICO_PLATFORM` is resolved from `BOARD_TYPE` (env), not the other way around.** `pico_w` → `rp2040`, `pico2_w` → `rp2350`. Any other value fails configure with a clear error.
