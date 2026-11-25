@@ -21,6 +21,11 @@ Usage:
     python3 tools/dev/swd.py crash [--elf ELF]
     python3 tools/dev/swd.py heap [--elf ELF] [--watch SECONDS] [--csv FILE]
     python3 tools/dev/swd.py postmortem [--elf ELF] [--leave-halted]
+    python3 tools/dev/swd.py settings [set KEY=VALUE ...] [--show-secrets]
+    python3 tools/dev/swd.py boot booster|ikbd [--timeout S]
+    python3 tools/dev/swd.py clock
+    python3 tools/dev/swd.py net [--elf ELF]
+    python3 tools/dev/swd.py bt [--elf ELF]
 
 The flash holds two images: the core firmware (rp2-atarist-rpikb) at
 0x10000000 and Booster at 0x10120000. The core firmware's boot selector runs
@@ -50,6 +55,23 @@ the Atari link until the RP resumes. Commands that need symbols use the cached
 ELF of the running image whose build ID the RP carries, unless --elf is given;
 the shipped release ELF is stripped, so they need a build from
 tools/dev/flash.sh or --elf.
+
+`settings` decodes the settings sector both firmwares share (0x101FD000):
+127-byte entries (30-byte key, 1-byte type, 96-byte value), MAGICVERSION
+first; the Wi-Fi password is masked unless --show-secrets. `settings set`
+rewrites entries (existing keys only, values checked against their type),
+verifies the sector and resets the chip, because the running firmware keeps
+its own copy in RAM. `boot booster` presses the CONFIG button over SWD
+(drives GPIO 9 high through SIO, then releases it): every mode loop of the core
+firmware jumps into Booster on it, without touching the settings. It does not
+write BOOT_FEATURE: the core firmware treats any value but IKBD as a mismatch
+and erases all settings. `boot ikbd` resets the chip; the core firmware then
+stays unless MODE is 255 (configuration), which sends it straight to Booster.
+`clock` decodes PLL_SYS, the core voltage and the flash interface and checks
+the low-power profile (96 MHz, 1.00 V). `net` and `bt` read Booster's own
+variables by symbol: the Wi-Fi mode, status, IP address and hostname; whether
+Bluetooth was started and is scanning, the discovered devices, and the three
+pairings stored in the settings.
 
 Three rules, from the siblings:
 
@@ -902,6 +924,346 @@ def cmd_program(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- Booster's state --------------------------------------------------------------
+
+def read_words(addresses: list[int]) -> list[int]:
+    """Several 32-bit words in one OpenOCD run."""
+    cmds = [f"targets {CORES[0]}", *(f"mdw 0x{a:08x}" for a in addresses)]
+    guarded = touches_flash([(a, 4) for a in addresses])
+    out = openocd(*(flash_guard(cmds) if guarded else cmds), core0_only=guarded)
+    values = []
+    for a in addresses:
+        m = re.search(rf"0x{a:08x}:\s+([0-9a-fA-F]{{8}})", out)
+        if not m:
+            raise SwdError(f"cannot read 0x{a:08x}")
+        values.append(int(m.group(1), 16))
+    return values
+
+
+def read_memories(ranges: list[tuple[int, int]]) -> list[bytes]:
+    """Several memory ranges in one OpenOCD run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        cmds, paths = [], []
+        for i, (address, length) in enumerate(ranges):
+            path = os.path.join(tmp, f"r{i}.bin")
+            cmds.append(f"dump_image {path} 0x{address:08x} {length}")
+            paths.append(path)
+        guarded = touches_flash(ranges)
+        openocd(*(flash_guard(cmds) if guarded else cmds), core0_only=guarded)
+        out = []
+        for (address, length), path in zip(ranges, paths):
+            with open(path, "rb") as f:
+                data = f.read()
+            if len(data) != length:
+                raise SwdError(f"read {len(data)} of {length} bytes at 0x{address:08x}")
+            out.append(data)
+    return out
+
+
+# The settings sector both firmwares share (GLOBAL_CONFIG in the linker
+# scripts). Entries are 127 bytes, back to back, unaligned: a 30-byte key, a
+# 1-byte type (the enum is packed to one byte by the ARM EABI) and a 96-byte
+# value, all NUL-padded strings; MAGICVERSION comes first. The firmware loads
+# as many entries as it has defaults and never clears the bytes after the
+# last one, so decoding stops at the first entry that is not one.
+GLOBAL_CONFIG = 0x101FD000
+SETTINGS_SECTOR = 4096
+KEY_LEN, VALUE_LEN = 30, 96
+ENTRY_LEN = KEY_LEN + 1 + VALUE_LEN
+SETTINGS_MAGIC = 0x12340001
+SETTING_TYPES = {0: "INT", 1: "STR", 2: "BOOL"}
+SECRET_KEYS = {"WIFI_PASSWORD"}
+KEY_RE = re.compile(rb"[A-Z0-9_]+")
+
+
+def decode_settings(data: bytes) -> list[tuple[str, int, str]]:
+    entries = []
+    for off in range(0, len(data) - ENTRY_LEN + 1, ENTRY_LEN):
+        raw = data[off:off + ENTRY_LEN]
+        key = raw[:KEY_LEN].split(b"\0", 1)[0]
+        if not key or not KEY_RE.fullmatch(key) or raw[KEY_LEN] not in SETTING_TYPES:
+            break
+        value = raw[KEY_LEN + 1:].split(b"\0", 1)[0].decode("latin-1")
+        entries.append((key.decode(), raw[KEY_LEN], value))
+    if not entries or entries[0][0] != "MAGICVERSION" or entries[0][2] != str(SETTINGS_MAGIC):
+        found = entries[0][2] if entries and entries[0][0] == "MAGICVERSION" else "none"
+        raise SwdError(f"no valid settings at 0x{GLOBAL_CONFIG:08x} (magic {found}, "
+                       f"expected {SETTINGS_MAGIC}): the firmware loads its defaults")
+    return entries
+
+
+def encode_settings(entries: list[tuple[str, int, str]]) -> bytes:
+    blob = b"".join(key.encode().ljust(KEY_LEN, b"\0") + bytes([kind])
+                    + value.encode("latin-1").ljust(VALUE_LEN, b"\0")
+                    for key, kind, value in entries)
+    return blob.ljust(SETTINGS_SECTOR, b"\xff")
+
+
+def read_settings() -> list[tuple[str, int, str]]:
+    return decode_settings(read_memory(GLOBAL_CONFIG, SETTINGS_SECTOR))
+
+
+def settings_value(entries: list[tuple[str, int, str]], key: str) -> str | None:
+    return next((v for k, _, v in entries if k == key), None)
+
+
+def write_settings(entries: list[tuple[str, int, str]]) -> None:
+    """Rewrite the settings sector, then reset: the running firmware keeps its
+    own copy in RAM and would write it back on its next save."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "settings.bin")
+        with open(path, "wb") as f:
+            f.write(encode_settings(entries))
+        out = openocd(*quiesce_commands(),
+                      f"flash write_image erase {path} 0x{GLOBAL_CONFIG:08x} bin",
+                      f"verify_image {path} 0x{GLOBAL_CONFIG:08x} bin",
+                      check=False, work_area=True)
+    chip_reset()
+    if not re.search(r"verified \d+ bytes", out):
+        raise SwdError("settings write did not verify: " + " / ".join(
+            l.strip() for l in out.splitlines() if l.startswith("Error"))[-300:])
+
+
+def cmd_settings(args: argparse.Namespace) -> int:
+    try:
+        entries = read_settings()
+    except SwdError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
+    if args.action != "set":
+        if args.pairs:
+            raise SwdError("usage: settings [set KEY=VALUE ...]")
+        for key, _, value in entries[1:]:
+            if key in SECRET_KEYS and value and not args.show_secrets:
+                value = "*" * len(value)
+            print(f"{key}={value}")
+        return 0
+    if not args.pairs:
+        raise SwdError("settings set needs at least one KEY=VALUE")
+    changes = {}
+    for pair in args.pairs:
+        key, sep, value = pair.partition("=")
+        kind = next((t for k, t, _ in entries if k == key), None)
+        if not sep or kind is None or key == "MAGICVERSION":
+            raise SwdError(f"{pair}: not KEY=VALUE for a key in the settings")
+        if len(value.encode("latin-1")) >= VALUE_LEN:
+            raise SwdError(f"{key}: values are at most {VALUE_LEN - 1} bytes")
+        if kind == 0 and not re.fullmatch(r"-?\d+", value):
+            raise SwdError(f"{key} is an integer")
+        if kind == 2 and value not in ("true", "false"):
+            raise SwdError(f"{key} is true or false")
+        changes[key] = value
+    write_settings([(k, t, changes.get(k, v)) for k, t, v in entries])
+    for key, value in changes.items():
+        shown = "*" * len(value) if key in SECRET_KEYS and not args.show_secrets else value
+        print(f"{key}={shown}")
+    print("settings written and verified; chip reset")
+    return 0
+
+
+# The CONFIG button: GPIO 9, pulled down, high when pressed. Every mode loop of
+# the core firmware jumps into Booster on its rising edge, without touching the
+# settings. Driving the pin high through SIO presses it; the button connects
+# the pin to 3.3 V, so driving it high cannot fight it.
+CONFIG_GPIO = 9
+SIO_GPIO_OUT_SET = 0xD0000018
+SIO_GPIO_OUT_CLR = 0xD0000020
+SIO_GPIO_OE_SET = 0xD0000038
+SIO_GPIO_OE_CLR = 0xD0000040
+
+
+def press_config(pressed: bool) -> None:
+    bit = 1 << CONFIG_GPIO
+    if pressed:
+        openocd(f"mww 0x{SIO_GPIO_OUT_SET:08x} 0x{bit:x}",
+                f"mww 0x{SIO_GPIO_OE_SET:08x} 0x{bit:x}")
+    else:
+        openocd(f"mww 0x{SIO_GPIO_OE_CLR:08x} 0x{bit:x}",
+                f"mww 0x{SIO_GPIO_OUT_CLR:08x} 0x{bit:x}")
+
+
+def wait_image(app: str, timeout: float) -> tuple[bool, str]:
+    deadline = time.monotonic() + timeout
+    how = "no answer"
+    while True:
+        try:
+            image, how = running_image()
+            if image == app:
+                return True, how
+        except SwdError as exc:
+            how = str(exc)
+        if time.monotonic() >= deadline:
+            return False, how
+        time.sleep(0.5)
+
+
+def cmd_boot(args: argparse.Namespace) -> int:
+    if args.target == "ikbd":
+        mode = settings_value(read_settings(), "MODE")
+        chip_reset()
+        if mode == "255":
+            print("note: MODE is 255 (configuration): the core firmware jumps "
+                  "straight back into Booster; set MODE first "
+                  "(swd.py settings set MODE=1)", file=sys.stderr)
+            ok, how = wait_image("booster", args.timeout)
+            print(f"running: booster ({how})")
+            return 3
+        ok, how = wait_image("core", args.timeout)
+        print(f"running: {'core' if ok else 'not the core firmware'} ({how})")
+        return 0 if ok else 3
+    image, how = running_image()
+    if image == "booster":
+        print(f"running: booster already ({how})")
+        return 0
+    # The core firmware polls the button from its mode loop, which starts a
+    # moment after boot; press until Booster runs, releasing between presses
+    # so each one is a new rising edge.
+    deadline = time.monotonic() + args.timeout
+    ok = False
+    try:
+        while not ok and time.monotonic() < deadline:
+            press_config(True)
+            ok, how = wait_image("booster", 2.0)
+            press_config(False)
+            if not ok:
+                time.sleep(0.3)
+    finally:
+        try:
+            press_config(False)
+        except SwdError:
+            pass
+    print(f"running: {'booster' if ok else 'not Booster'} ({how})")
+    return 0 if ok else 3
+
+
+VREG_V = [0.55 + 0.05 * i for i in range(16)] + [
+    1.35, 1.40, 1.50, 1.60, 1.65, 1.70, 1.80, 1.90, 2.00, 2.35, 2.50, 2.65,
+    2.80, 3.00, 3.15, 3.30]
+# Both firmwares' low-power profile (MCU_CLOCK_FREQ_KHZ, MCU_VOLTAGE).
+PROFILE_KHZ, PROFILE_V = 96000, 1.00
+
+
+def qmi_timing(t: int, clk_khz: float) -> str:
+    div = t & 0xFF
+    sck = f"{clk_khz / div / 1000:.1f} MHz" if div else "?"
+    pagebreak = ("none", "256 B", "1 KB", "4 KB")[(t >> 28) & 3]
+    return (f"clkdiv {div} ({sck}), rxdelay {(t >> 8) & 7}, min deselect "
+            f"{(t >> 12) & 0x1F}, max select {(t >> 17) & 0x3F}, page break "
+            f"{pagebreak}, cooldown {(t >> 30) & 3}")
+
+
+def qmi_format(f: int, cmd: int) -> str:
+    widths = ("single", "dual", "quad", "?")
+    prefix = (f"0x{cmd & 0xFF:02x}" if (f >> 12) & 1 else
+              f"none: continuous mode, entered with 0x{cmd & 0xFF:02x}")
+    suffix = f"0x{(cmd >> 8) & 0xFF:02x}" if (f >> 14) & 3 else "none"
+    return (f"command {prefix}, mode {suffix}, dummy {((f >> 16) & 7) * 4} bits, "
+            f"address {widths[(f >> 2) & 3]}, data {widths[(f >> 8) & 3]}"
+            + (", DTR" if f & (1 << 28) else ""))
+
+
+def cmd_clock(args: argparse.Namespace) -> int:
+    (pll_cs, fbdiv, prim, sys_ctrl, sys_div, vreg, m0t, m0f, m0c) = read_words([
+        0x40050000, 0x40050008, 0x4005000C, 0x4001003C, 0x40010040,
+        0x4010000C, 0x400D000C, 0x400D0010, 0x400D0014])
+    refdiv = pll_cs & 0x3F
+    pd1, pd2 = (prim >> 16) & 7, (prim >> 12) & 7
+    vco = 12000 * fbdiv / refdiv if refdiv else 0
+    pll_khz = vco / (pd1 * pd2) if pd1 and pd2 else 0
+    on_pll = (sys_ctrl & 1) and ((sys_ctrl >> 5) & 7) == 0
+    div = (sys_div >> 16) or 1
+    clk_khz = pll_khz / div if on_pll else 0
+    vsel = (vreg >> 4) & 0x1F
+    volts = VREG_V[vsel]
+    print(f"clk_sys: {clk_khz / 1000:.1f} MHz" if on_pll else
+          "clk_sys: not on PLL_SYS")
+    print(f"  PLL_SYS: 12 MHz / {refdiv} x {fbdiv} = VCO {vco / 1000:.0f} MHz, "
+          f"/ {pd1} / {pd2}" + (f", clk_sys / {div}" if div > 1 else ""))
+    print(f"core voltage: {volts:.2f} V (VSEL {vsel})")
+    print(f"flash (QMI M0): {qmi_timing(m0t, clk_khz)}")
+    print(f"  read: {qmi_format(m0f, m0c)}")
+    ok = round(clk_khz) == PROFILE_KHZ and abs(volts - PROFILE_V) < 0.01
+    print(f"low-power profile ({PROFILE_KHZ // 1000} MHz, {PROFILE_V:.2f} V): "
+          + ("yes" if ok else "NO"))
+    return 0 if ok else 3
+
+
+def read_symbols(elf: str, *names: str) -> dict[str, bytes]:
+    """The RAM bytes of each named variable, in one OpenOCD run."""
+    sym = elf_symbols(elf, *names)
+    missing = [n for n in names if n not in sym or not sym[n][1]]
+    if missing:
+        raise SwdError(f"{os.path.basename(elf)} lacks {', '.join(missing)}")
+    data = read_memories([sym[n] for n in names])
+    return dict(zip(names, data))
+
+
+def c_string(data: bytes) -> str:
+    return data.split(b"\0", 1)[0].decode("latin-1")
+
+
+AP_ADDRESS = "192.168.4.1"
+WIFI_STATUS = ("disconnected", "connecting", "connected", "connected, no IP",
+               "connected, IP", "timeout", "generic error", "no data",
+               "not permitted", "invalid argument", "I/O error",
+               "bad authentication", "connect failed", "insufficient resources",
+               "not supported")
+
+
+def booster_elf(explicit: str | None) -> str:
+    elf = running_elf(explicit)
+    if elf_app(elf) != "booster":
+        raise SwdError("Booster is not running (swd.py boot booster)")
+    return elf
+
+
+def cmd_net(args: argparse.Namespace) -> int:
+    elf = booster_elf(args.elf)
+    v = read_symbols(elf, "wifiCurrentMode", "connectionStatus", "currentIp",
+                     "wifiHostname", "connectionStatusStr")
+    mode = "STA" if v["wifiCurrentMode"][0] == 1 else "AP"
+    status = v["connectionStatus"][0]
+    print(f"mode: {mode}")
+    if mode == "STA":
+        detail = c_string(v["connectionStatusStr"])
+        print(f"status: {WIFI_STATUS[status] if status < len(WIFI_STATUS) else status}"
+              + (f" ({detail})" if detail else ""))
+    ip = ".".join(str(b) for b in v["currentIp"])
+    if mode == "AP" and ip == "0.0.0.0":
+        # Booster records the address only when the STA link comes up; the
+        # access point always has WIFI_AP_GATEWAY (booster/src/include/network.h).
+        ip = f"{AP_ADDRESS} (the access point's fixed address)"
+    print(f"ip: {ip}")
+    print(f"hostname: {c_string(v['wifiHostname'])}.local")
+    return 0
+
+
+BT_DEVICE = (18, 64, 16)  # bt_device_info_t: address, name, type
+
+
+def cmd_bt(args: argparse.Namespace) -> int:
+    elf = booster_elf(args.elf)
+    v = read_symbols(elf, "btloop_initialized", "btloop_active",
+                     "bt_devices_count", "bt_devices")
+    count = struct.unpack("<I", v["bt_devices_count"])[0]
+    print(f"bluetooth: {'started' if v['btloop_initialized'][0] else 'never started'}, "
+          f"{'scanning' if v['btloop_active'][0] else 'not scanning'}")
+    print(f"discovered: {count}")
+    size = sum(BT_DEVICE)
+    for i in range(min(count, len(v["bt_devices"]) // size)):
+        rec = v["bt_devices"][i * size:(i + 1) * size]
+        address = c_string(rec[:BT_DEVICE[0]])
+        name = c_string(rec[BT_DEVICE[0]:BT_DEVICE[0] + BT_DEVICE[1]])
+        kind = c_string(rec[BT_DEVICE[0] + BT_DEVICE[1]:])
+        print(f"  {address}  {kind or '?':9} {name}")
+    entries = read_settings()
+    for label, key in (("keyboard", "BT_KEYBOARD"), ("mouse", "BT_MOUSE"),
+                       ("gamepad", "BT_GAMEPAD")):
+        value = settings_value(entries, key) or ""
+        print(f"paired {label}: {value.replace('#', '  ', 1) or 'none'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="swd.py",
@@ -954,6 +1316,31 @@ def build_parser() -> argparse.ArgumentParser:
     pm.add_argument("--elf")
     pm.add_argument("--leave-halted", action="store_true")
     pm.set_defaults(func=cmd_postmortem)
+
+    st = sub.add_parser("settings", help="the settings sector, or set entries")
+    st.add_argument("action", nargs="?", choices=["set"])
+    st.add_argument("pairs", nargs="*", metavar="KEY=VALUE")
+    st.add_argument("--show-secrets", action="store_true")
+    st.set_defaults(func=cmd_settings)
+
+    bo = sub.add_parser("boot", help="run Booster (presses CONFIG) or the core "
+                        "firmware (resets)")
+    bo.add_argument("target", choices=["booster", "ikbd"])
+    bo.add_argument("--timeout", type=float, default=20.0)
+    bo.set_defaults(func=cmd_boot)
+
+    ck = sub.add_parser("clock", help="clk_sys, core voltage and the flash "
+                        "interface, against the low-power profile")
+    ck.set_defaults(func=cmd_clock)
+
+    ne = sub.add_parser("net", help="Booster's Wi-Fi mode, status, IP, hostname")
+    ne.add_argument("--elf")
+    ne.set_defaults(func=cmd_net)
+
+    bt = sub.add_parser("bt", help="Booster's Bluetooth state, discovered "
+                        "devices and pairings")
+    bt.add_argument("--elf")
+    bt.set_defaults(func=cmd_bt)
     return p
 
 
