@@ -347,18 +347,28 @@ endif()
 # Ensure Bluepad32 gets the same debug define used by the firmware target.
 target_compile_definitions(bluepad32 PRIVATE _DEBUG=${_DEBUG})
 
+# The shipped release ELF is stripped. Builds made for the SWD developer tools
+# pass -DBOOSTER_KEEP_SYMBOLS=ON so the tools can read the device by symbol;
+# symbols never reach the .uf2, which is the same either way.
+option(BOOSTER_KEEP_SYMBOLS "Keep the symbol table in release ELFs" OFF)
+
 # Debug outputs
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 # Workaround to disable USB output in release builds
 if(${_DEBUG} STREQUAL "0")
     pico_enable_stdio_uart(${PROJECT_NAME} 0)
-    target_link_options(${PROJECT_NAME} PRIVATE
-    "-Wl,--gc-sections"
-    "-Wl,--strip-all"
-    )
+    target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--gc-sections")
+    if(NOT BOOSTER_KEEP_SYMBOLS)
+        target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--strip-all")
+    endif()
 
 else()
     pico_enable_stdio_uart(${PROJECT_NAME} 1)
+    # 921,600 baud, not the SDK's 115,200: DPRINTF blocks on the UART, so a
+    # faster console disturbs timing less and shortens a debug boot. Set the
+    # serial terminal to 921600.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        PICO_DEFAULT_UART_BAUD_RATE=921600)
 endif()
 
 # Pass these values to the C compiler
