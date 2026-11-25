@@ -26,6 +26,7 @@ Usage:
     python3 tools/dev/swd.py clock
     python3 tools/dev/swd.py net [--elf ELF]
     python3 tools/dev/swd.py bt [--elf ELF]
+    python3 tools/dev/swd.py wifi-bench [--off] [--timeout S]
 
 The flash holds two images: the core firmware (rp2-atarist-rpikb) at
 0x10000000 and Booster at 0x10120000. The core firmware's boot selector runs
@@ -71,7 +72,11 @@ stays unless MODE is 255 (configuration), which sends it straight to Booster.
 the low-power profile (96 MHz, 1.00 V). `net` and `bt` read Booster's own
 variables by symbol: the Wi-Fi mode, status, IP address and hostname; whether
 Bluetooth was started and is scanning, the discovered devices, and the three
-pairings stored in the settings.
+pairings stored in the settings. `wifi-bench` writes the bench Wi-Fi from
+tools/dev/bench.env (BENCH_WIFI_SSID, _PASSWORD, _AUTH, _COUNTRY; never
+committed, the password never printed) into the settings in STA mode, makes
+Booster run, and waits for its address; `--off` puts the access point back
+with the AP defaults (Booster also uses WIFI_PASSWORD as the AP's password).
 
 Three rules, from the siblings:
 
@@ -1111,14 +1116,20 @@ def cmd_boot(args: argparse.Namespace) -> int:
         ok, how = wait_image("core", args.timeout)
         print(f"running: {'core' if ok else 'not the core firmware'} ({how})")
         return 0 if ok else 3
+    ok, how = boot_booster(args.timeout)
+    print(f"running: {'booster' if ok else 'not Booster'} ({how})")
+    return 0 if ok else 3
+
+
+def boot_booster(timeout: float) -> tuple[bool, str]:
+    """Booster runs, or is made to run by pressing CONFIG over SWD."""
     image, how = running_image()
     if image == "booster":
-        print(f"running: booster already ({how})")
-        return 0
+        return True, "already; " + how
     # The core firmware polls the button from its mode loop, which starts a
     # moment after boot; press until Booster runs, releasing between presses
     # so each one is a new rising edge.
-    deadline = time.monotonic() + args.timeout
+    deadline = time.monotonic() + timeout
     ok = False
     try:
         while not ok and time.monotonic() < deadline:
@@ -1132,8 +1143,7 @@ def cmd_boot(args: argparse.Namespace) -> int:
             press_config(False)
         except SwdError:
             pass
-    print(f"running: {'booster' if ok else 'not Booster'} ({how})")
-    return 0 if ok else 3
+    return ok, how
 
 
 VREG_V = [0.55 + 0.05 * i for i in range(16)] + [
@@ -1217,24 +1227,113 @@ def booster_elf(explicit: str | None) -> str:
     return elf
 
 
-def cmd_net(args: argparse.Namespace) -> int:
-    elf = booster_elf(args.elf)
+def read_net(elf: str) -> dict:
+    """Booster's Wi-Fi state: mode, status (name), detail, ip, hostname."""
     v = read_symbols(elf, "wifiCurrentMode", "connectionStatus", "currentIp",
                      "wifiHostname", "connectionStatusStr")
-    mode = "STA" if v["wifiCurrentMode"][0] == 1 else "AP"
     status = v["connectionStatus"][0]
-    print(f"mode: {mode}")
-    if mode == "STA":
-        detail = c_string(v["connectionStatusStr"])
-        print(f"status: {WIFI_STATUS[status] if status < len(WIFI_STATUS) else status}"
-              + (f" ({detail})" if detail else ""))
-    ip = ".".join(str(b) for b in v["currentIp"])
-    if mode == "AP" and ip == "0.0.0.0":
+    return {"mode": "STA" if v["wifiCurrentMode"][0] == 1 else "AP",
+            "status": WIFI_STATUS[status] if status < len(WIFI_STATUS) else str(status),
+            "detail": c_string(v["connectionStatusStr"]),
+            "ip": ".".join(str(b) for b in v["currentIp"]),
+            "hostname": c_string(v["wifiHostname"])}
+
+
+# The bench Wi-Fi: tools/dev/bench.env (KEY=VALUE lines, never committed), or
+# the same names in the environment, which win.
+BENCH_ENV = os.path.join(HERE, "bench.env")
+BENCH_KEYS = ("BENCH_WIFI_SSID", "BENCH_WIFI_PASSWORD", "BENCH_WIFI_AUTH",
+              "BENCH_WIFI_COUNTRY")
+# What a first AP boot writes back (booster/src/include/network.h).
+AP_DEFAULTS = {"WIFI_MODE": "0", "WIFI_SSID": "", "WIFI_PASSWORD": "sidecart",
+               "WIFI_AUTH": "5"}
+
+
+def bench_wifi() -> dict[str, str]:
+    values = {}
+    if os.path.exists(BENCH_ENV):
+        with open(BENCH_ENV, encoding="utf-8") as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep and key in BENCH_KEYS:
+                    values[key] = value
+    values.update({k: os.environ[k] for k in BENCH_KEYS if os.environ.get(k)})
+    if not values.get("BENCH_WIFI_SSID") or not values.get("BENCH_WIFI_PASSWORD"):
+        raise SwdError("no bench Wi-Fi: set BENCH_WIFI_SSID and BENCH_WIFI_PASSWORD "
+                       f"in {os.path.relpath(BENCH_ENV, REPO)} or the environment")
+    return values
+
+
+def bench_settings() -> dict[str, str]:
+    b = bench_wifi()
+    return {"WIFI_MODE": "1", "WIFI_SSID": b["BENCH_WIFI_SSID"],
+            "WIFI_PASSWORD": b["BENCH_WIFI_PASSWORD"],
+            "WIFI_AUTH": b.get("BENCH_WIFI_AUTH") or "5",
+            "WIFI_COUNTRY": (b.get("BENCH_WIFI_COUNTRY") or "XX").upper()}
+
+
+def apply_settings(changes: dict[str, str]) -> list[tuple[str, int, str]]:
+    """Write `changes` over the current settings (and reset); returns the
+    settings as they were before, to put back with write_settings()."""
+    before = read_settings()
+    write_settings([(k, t, changes.get(k, v)) for k, t, v in before])
+    return before
+
+
+def wait_wifi(timeout: float, want_sta: bool) -> dict:
+    """Booster's Wi-Fi state once it has an address (STA) or is up (AP).
+    Booster gives up on a network after its connect attempts and falls back to
+    its access point, rewriting the hostname, password and auth; that ends the
+    wait with an error instead of a timeout."""
+    deadline = time.monotonic() + timeout
+    net = {}
+    while time.monotonic() < deadline:
+        try:
+            net = read_net(running_elf(None))
+            if want_sta and net["mode"] == "STA" and net["status"] == "connected, IP" \
+                    and net["ip"] != "0.0.0.0":
+                return net
+            if want_sta and net["mode"] == "AP":
+                raise SwdError("Booster fell back to its access point: the bench "
+                               "Wi-Fi did not accept it (SSID, password, AUTH?)")
+            if not want_sta and net["mode"] == "AP":
+                return net
+        except SwdError as exc:
+            if "fell back" in str(exc):
+                raise
+        time.sleep(1.0)
+    raise SwdError(f"no Wi-Fi after {timeout:g} s ({net or 'no answer'})")
+
+
+def cmd_wifi_bench(args: argparse.Namespace) -> int:
+    changes = dict(AP_DEFAULTS) if args.off else bench_settings()
+    mode = settings_value(apply_settings(changes), "MODE")
+    if mode != "255":
+        ok, how = boot_booster(args.timeout)
+        if not ok:
+            raise SwdError(f"Booster does not run ({how})")
+    net = wait_wifi(args.timeout, want_sta=not args.off)
+    if args.off:
+        print(f"wifi: access point, AP defaults restored "
+              f"({AP_ADDRESS}, {net['hostname']}.local)")
+    else:
+        print(f"wifi: STA on {changes['WIFI_SSID']}, ip {net['ip']} "
+              f"({net['hostname']}.local)")
+    return 0
+
+
+def cmd_net(args: argparse.Namespace) -> int:
+    net = read_net(booster_elf(args.elf))
+    print(f"mode: {net['mode']}")
+    if net["mode"] == "STA":
+        print(f"status: {net['status']}" + (f" ({net['detail']})" if net["detail"] else ""))
+    ip = net["ip"]
+    if net["mode"] == "AP" and ip == "0.0.0.0":
         # Booster records the address only when the STA link comes up; the
         # access point always has WIFI_AP_GATEWAY (booster/src/include/network.h).
         ip = f"{AP_ADDRESS} (the access point's fixed address)"
     print(f"ip: {ip}")
-    print(f"hostname: {c_string(v['wifiHostname'])}.local")
+    print(f"hostname: {net['hostname']}.local")
     return 0
 
 
@@ -1341,6 +1440,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "devices and pairings")
     bt.add_argument("--elf")
     bt.set_defaults(func=cmd_bt)
+
+    wb = sub.add_parser("wifi-bench", help="put Booster on the bench Wi-Fi "
+                        "(tools/dev/bench.env), or back on its access point")
+    wb.add_argument("--off", action="store_true",
+                    help="back to the access point with the AP defaults")
+    wb.add_argument("--timeout", type=float, default=60.0)
+    wb.set_defaults(func=cmd_wifi_bench)
     return p
 
 

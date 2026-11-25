@@ -108,3 +108,64 @@ def report(name: str, extra: dict | None = None) -> int:
     print(f"\n{len(passed)} passed, {len(failed)} failed, {len(skipped)} skipped; "
           f"report {os.path.relpath(path, REPO)}")
     return 1 if failed else 0
+
+
+# --- Booster on the bench Wi-Fi ----------------------------------------------------
+
+import base64  # noqa: E402
+import json  # noqa: E402
+import urllib.error  # noqa: E402
+import urllib.parse  # noqa: E402
+import urllib.request  # noqa: E402
+
+
+class BenchWifi:
+    """Booster on the bench Wi-Fi (tools/dev/bench.env) for the duration of a
+    `with` block, its settings snapshot restored afterwards, failure or not.
+    The restore rewrites the settings sector and resets the chip."""
+
+    def __init__(self, timeout: float = 60) -> None:
+        self.timeout = timeout
+        self.snapshot = None
+        self.ip = ""
+
+    def __enter__(self) -> "BenchWifi":
+        self.snapshot = swd.apply_settings(swd.bench_settings())
+        if swd.settings_value(self.snapshot, "MODE") != "255":
+            ok, how = swd.boot_booster(self.timeout)
+            if not ok:
+                raise swd.SwdError(f"Booster does not run ({how})")
+        self.ip = swd.wait_wifi(self.timeout, want_sta=True)["ip"]
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self.snapshot:
+            swd.write_settings(self.snapshot)
+            print("  (settings restored)", flush=True)
+
+    def get(self, path: str, timeout: float = 10) -> tuple[int, bytes, float]:
+        """HTTP status, body and seconds for one GET; status 0 on no answer."""
+        start = time.monotonic()
+        try:
+            with urllib.request.urlopen(f"http://{self.ip}{path}",
+                                        timeout=timeout) as r:
+                body = r.read()
+                return r.status, body, time.monotonic() - start
+        except urllib.error.HTTPError as e:
+            return e.code, e.read(), time.monotonic() - start
+        except OSError:
+            return 0, b"", time.monotonic() - start
+
+
+def saveparams_path(entries: list[dict]) -> str:
+    """The request the web UI sends: encodeURIComponent(btoa(JSON.stringify()))."""
+    raw = json.dumps(entries, separators=(",", ":")).encode()
+    return "/saveparams.cgi?json=" + urllib.parse.quote(
+        base64.b64encode(raw).decode(), safe="")
+
+
+def json_body(body: bytes):
+    try:
+        return json.loads(body.decode("utf-8", errors="replace"))
+    except ValueError:
+        return None
