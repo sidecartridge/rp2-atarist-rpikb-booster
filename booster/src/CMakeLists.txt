@@ -199,8 +199,15 @@ add_dependencies(${PROJECT_NAME} fsdata_srv_target)
 set(_BOOSTER_PICOTOOL_PATH "")
 if (DEFINED ENV{PICOTOOL_OVERRIDE_DIR})
     set(_BOOSTER_PICOTOOL_PATH "$ENV{PICOTOOL_OVERRIDE_DIR}/picotool")
-elseif (TARGET picotool)
-    get_target_property(_BOOSTER_PICOTOOL_PATH picotool IMPORTED_LOCATION)
+else()
+    # Find picotool the way the SDK will when it makes the UF2 (it does so only
+    # later, in pico_add_uf2_output), and read its path through LOCATION: an
+    # installed picotool package sets only the per-configuration location
+    # (IMPORTED_LOCATION_RELEASE), so IMPORTED_LOCATION alone misses it.
+    pico_init_picotool()
+    if (TARGET picotool)
+        get_property(_BOOSTER_PICOTOOL_PATH TARGET picotool PROPERTY LOCATION)
+    endif()
 endif()
 
 set(_BOOSTER_PICOTOOL_HAS_PLATFORM 0)
