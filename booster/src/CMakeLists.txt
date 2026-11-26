@@ -199,8 +199,15 @@ add_dependencies(${PROJECT_NAME} fsdata_srv_target)
 set(_BOOSTER_PICOTOOL_PATH "")
 if (DEFINED ENV{PICOTOOL_OVERRIDE_DIR})
     set(_BOOSTER_PICOTOOL_PATH "$ENV{PICOTOOL_OVERRIDE_DIR}/picotool")
-elseif (TARGET picotool)
-    get_target_property(_BOOSTER_PICOTOOL_PATH picotool IMPORTED_LOCATION)
+else()
+    # Find picotool the way the SDK will when it makes the UF2 (it does so only
+    # later, in pico_add_uf2_output), and read its path through LOCATION: an
+    # installed picotool package sets only the per-configuration location
+    # (IMPORTED_LOCATION_RELEASE), so IMPORTED_LOCATION alone misses it.
+    pico_init_picotool()
+    if (TARGET picotool)
+        get_property(_BOOSTER_PICOTOOL_PATH TARGET picotool PROPERTY LOCATION)
+    endif()
 endif()
 
 set(_BOOSTER_PICOTOOL_HAS_PLATFORM 0)
@@ -340,18 +347,28 @@ endif()
 # Ensure Bluepad32 gets the same debug define used by the firmware target.
 target_compile_definitions(bluepad32 PRIVATE _DEBUG=${_DEBUG})
 
+# The shipped release ELF is stripped. Builds made for the SWD developer tools
+# pass -DBOOSTER_KEEP_SYMBOLS=ON so the tools can read the device by symbol;
+# symbols never reach the .uf2, which is the same either way.
+option(BOOSTER_KEEP_SYMBOLS "Keep the symbol table in release ELFs" OFF)
+
 # Debug outputs
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 # Workaround to disable USB output in release builds
 if(${_DEBUG} STREQUAL "0")
     pico_enable_stdio_uart(${PROJECT_NAME} 0)
-    target_link_options(${PROJECT_NAME} PRIVATE
-    "-Wl,--gc-sections"
-    "-Wl,--strip-all"
-    )
+    target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--gc-sections")
+    if(NOT BOOSTER_KEEP_SYMBOLS)
+        target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--strip-all")
+    endif()
 
 else()
     pico_enable_stdio_uart(${PROJECT_NAME} 1)
+    # 921,600 baud, not the SDK's 115,200: DPRINTF blocks on the UART, so a
+    # faster console disturbs timing less and shortens a debug boot. Set the
+    # serial terminal to 921600.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        PICO_DEFAULT_UART_BAUD_RATE=921600)
 endif()
 
 # Pass these values to the C compiler
@@ -362,6 +379,24 @@ add_definitions(-DLATEST_RELEASE_URL="${LATEST_RELEASE_URL}")
 
 # Pass the _DEBUG flag to the C compiler
 add_definitions(-D_DEBUG=${_DEBUG})
+
+# build_id.h and build_id.c (RELEASE_BUILD_ID and the release_build_id symbol,
+# the git commit) are regenerated on every build; see build_id.cmake. They are
+# rewritten only when the ID changes, so only their users recompile. The
+# string is kept through --gc-sections so the SWD developer tools can read
+# which build the device runs, stripped ELF or not.
+set(BUILD_ID_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/build_id)
+add_custom_target(build_id
+    COMMAND ${CMAKE_COMMAND} -DREPO_DIR=${CMAKE_CURRENT_LIST_DIR}/../..
+            -DOUT_DIR=${BUILD_ID_DIR} -DDEBUG_BUILD=${_DEBUG}
+            -P ${CMAKE_CURRENT_LIST_DIR}/build_id.cmake
+    BYPRODUCTS ${BUILD_ID_DIR}/build_id.h ${BUILD_ID_DIR}/build_id.c
+    COMMENT "Checking the build ID")
+add_dependencies(${PROJECT_NAME} build_id)
+target_sources(${PROJECT_NAME} PRIVATE ${BUILD_ID_DIR}/build_id.c)
+set_source_files_properties(${BUILD_ID_DIR}/build_id.c PROPERTIES GENERATED TRUE)
+target_include_directories(${PROJECT_NAME} PRIVATE ${BUILD_ID_DIR})
+target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--undefined=release_build_id")
 
 # Print the variables on screen
 message(STATUS "RELEASE_TYPE: " ${RELEASE_TYPE})

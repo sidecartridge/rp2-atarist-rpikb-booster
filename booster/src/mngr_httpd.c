@@ -334,8 +334,11 @@ const char *cgi_saveparams(int iIndex, int iNumParams, char *pcParam[],
       DPRINTF("JSON encoded value: %s\n", pcValue[i]);
       int ret;
       size_t len = 0;
-      char url_decoded_param[4096];
-      char output_buffer[4096];
+      // Static, not on the stack: core 0's stack has at most 8 KB (SCRATCH_Y
+      // and SCRATCH_X), and these two buffers alone are 8 KB. lwIP calls CGI
+      // handlers one at a time, so sharing them between calls is safe.
+      static char url_decoded_param[4096];
+      static char output_buffer[4096];
       if (url_decode(pcValue[i], url_decoded_param,
                      sizeof(url_decoded_param)) != 0) {
         DPRINTF("Error URL-decoding base64 param\n");
