@@ -119,39 +119,6 @@ static void buildApSsid(const char *hostname, char *outSsid,
            serial);
 }
 
-static uint32_t getCountryCode(char *code, char **validCountryStr) {
-  *validCountryStr = "XX";
-  // empty configuration select worldwide
-  if (strlen(code) == 0) {
-    return CYW43_COUNTRY_WORLDWIDE;
-  }
-
-  if (strlen(code) != 2) {
-    return CYW43_COUNTRY_WORLDWIDE;
-  }
-
-  // current supported country code
-  // https://www.raspberrypi.com/documentation/pico-sdk/networking.html#CYW43_COUNTRY_
-  // ISO-3166-alpha-2
-  // XX select worldwide
-  char *validCountryCode[] = {
-      "XX", "AU", "AR", "AT", "BE", "BR", "CA", "CL", "CN", "CO", "CZ",
-      "DK", "EE", "FI", "FR", "DE", "GR", "HK", "HU", "IS", "IN", "IL",
-      "IT", "JP", "KE", "LV", "LI", "LT", "LU", "MY", "MT", "MX", "NL",
-      "NZ", "NG", "NO", "PE", "PH", "PL", "PT", "SG", "SK", "SI", "ZA",
-      "KR", "ES", "SE", "CH", "TW", "TH", "TR", "GB", "US"};
-
-  char country[3] = {toupper(code[0]), toupper(code[1]), 0};
-  for (int i = 0; i < (sizeof(validCountryCode) / sizeof(validCountryCode[0]));
-       i++) {
-    if (!strcmp(country, validCountryCode[i])) {
-      *validCountryStr = validCountryCode[i];
-      return CYW43_COUNTRY(country[0], country[1], 0);
-    }
-  }
-  return CYW43_COUNTRY_WORLDWIDE;
-}
-
 /**
  * @brief Deinitializes the network.
  *
@@ -197,28 +164,6 @@ static void network_safePreInitCleanup() {
   cyw43Initialized = false;
 }
 #endif
-
-// NOLINTBEGIN(readability-magic-numbers)
-static u_int32_t getAuthPicoCode(uint16_t connectCode) {
-  switch (connectCode) {
-    case 0:
-      return CYW43_AUTH_OPEN;
-    case 1:
-    case 2:
-      return CYW43_AUTH_WPA_TKIP_PSK;
-    case 3:
-    case 4:
-    case 5:
-      return CYW43_AUTH_WPA2_AES_PSK;
-    case 6:
-    case 7:
-    case 8:
-      return CYW43_AUTH_WPA2_MIXED_PSK;
-    default:
-      return CYW43_AUTH_OPEN;
-  }
-}
-// NOLINTEND(readability-magic-numbers)
 
 // Function to parse and clean up an SSID string
 // If the SSID is longer than MAX_SSID_LENGTH, it is truncated.
@@ -303,45 +248,6 @@ bool network_parsePassword(const char *password, char *outPassword) {
     }
   }
   return false;
-}
-
-static bool network_parseBssid(const char *value, uint8_t outBssid[NETWORK_MAC_SIZE],
-                               char outBssidStr[MAX_BSSID_LENGTH]) {
-  if (value == NULL || outBssid == NULL || outBssidStr == NULL) {
-    return false;
-  }
-
-  // Canonical BSSID format: xx:xx:xx:xx:xx:xx
-  if (strlen(value) != 17) {
-    return false;
-  }
-
-  char sep = value[2];
-  if (sep != ':' && sep != '-') {
-    return false;
-  }
-
-  for (int i = 0; i < NETWORK_MAC_SIZE; i++) {
-    int idx = i * 3;
-    if (!isxdigit((unsigned char)value[idx]) ||
-        !isxdigit((unsigned char)value[idx + 1])) {
-      return false;
-    }
-    if (i < NETWORK_MAC_SIZE - 1 && value[idx + 2] != sep) {
-      return false;
-    }
-
-    char hexPair[3] = {value[idx], value[idx + 1], '\0'};
-    outBssid[i] = (uint8_t)strtoul(hexPair, NULL, HEX_BASE);
-
-    outBssidStr[idx] = (char)tolower((unsigned char)value[idx]);
-    outBssidStr[idx + 1] = (char)tolower((unsigned char)value[idx + 1]);
-    if (i < NETWORK_MAC_SIZE - 1) {
-      outBssidStr[idx + 2] = ':';
-    }
-  }
-  outBssidStr[17] = '\0';
-  return true;
 }
 
 static bool network_findCachedSsidByBssid(const char *bssid, char *outSsid,
@@ -439,47 +345,6 @@ void network_setPollingCallback(NetworkPollingCallback callback) {
   networkPollingCallback = callback;
 }
 
-// NOLINTBEGIN(readability-magic-numbers)
-const char *network_getAuthTypeString(uint16_t connectCode) {
-  switch (connectCode) {
-    case 0:
-      return "OPEN";
-    case 1:
-    case 2:
-      return "WPA_TKIP_PSK";
-    case 3:
-    case 4:
-    case 5:
-      return "WPA2_AES_PSK";
-    case 6:
-    case 7:
-    case 8:
-      return "WPA2_MIXED_PSK";
-    default:
-      return "OPEN";
-  }
-}
-// NOLINTEND(readability-magic-numbers)
-
-// NOLINTBEGIN(readability-magic-numbers)
-const char *network_getAuthTypeStringShort(uint16_t connectCode) {
-  switch (connectCode) {
-    case 1:
-    case 2:
-      return "WPA";
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-    case 7:
-    case 8:
-      return "WPA2";
-    default:
-      return "OPEN";
-  }
-}
-// NOLINTEND(readability-magic-numbers)
-
 /**
  * @brief Initializes the CYW43 WiFi chip if it has not been initialized
  * already.
@@ -548,7 +413,7 @@ int network_wifiInit(wifi_mode_t mode) {
       settings_find_entry(gconfig_getContext(), PARAM_WIFI_COUNTRY);
   if (countryEntry != NULL) {
     char *valid;
-    country = getCountryCode(countryEntry->value, &valid);
+    country = network_getCountryCode(countryEntry->value, &valid);
     settings_put_string(gconfig_getContext(), PARAM_WIFI_COUNTRY, valid);
   }
 
@@ -612,8 +477,8 @@ int network_wifiInit(wifi_mode_t mode) {
       apSettingsUpdated = true;
     }
 
-    DPRINTF("Auth mode: %08x\n", getAuthPicoCode(authInt));
-    cyw43_arch_enable_ap_mode(ssidStr, passwordStr, getAuthPicoCode(authInt));
+    DPRINTF("Auth mode: %08x\n", network_getAuthPicoCode(authInt));
+    cyw43_arch_enable_ap_mode(ssidStr, passwordStr, network_getAuthPicoCode(authInt));
 
     // Set static IP address for the AP
     struct netif *netif = &cyw43_state.netif[CYW43_ITF_AP];
@@ -958,7 +823,7 @@ wifi_sta_conn_process_status_t network_wifiStaConnect() {
   }
   DPRINTF("The password is: %s\n", passwordValue);
 
-  uint32_t authValue = getAuthPicoCode(atoi(authMode->value));
+  uint32_t authValue = network_getAuthPicoCode(atoi(authMode->value));
   int errorCode = 0;
   bool bssidFallbackTried = false;
   if (connectUsingBssid) {

@@ -33,7 +33,9 @@ cd booster/src
 cmake --preset souffle-release && cmake --build --preset souffle-release
 ```
 
-No test suite. Verification is "builds, produces UF2, no clang-tidy regressions in touched files." Lint config: `.clang-format` and `.clang-tidy` at repo root.
+Host unit tests: `make -C tests/host test known-bugs` builds Booster's pure logic (the web request decoding, the settings store, the Wi-Fi parameter parsing) with the host compiler under ASan and UBSan and runs it in seconds; CI runs it alongside the firmware matrix. It needs the `pico-sdk` submodule with its `lib/mbedtls` and `lib/cyw43-driver`, and `rp2-atarist-rpikb` (the settings key-set check). A `bug_*.c` test pins a defect the firmware still has and must fail until it is fixed, then it is renamed `test_*.c`. Logic worth testing lives in SDK-free units (`httpd_params.c`, `network_parse.c`) that the firmware links and the tests compile directly; `tests/host/shim/` stands in for the few SDK headers they include. See `tests/host/Makefile`.
+
+Verification is "host tests pass, builds, produces UF2, no clang-tidy regressions in touched files." Lint config: `.clang-format` and `.clang-tidy` at repo root.
 
 ## High-level architecture
 
@@ -47,8 +49,10 @@ The Booster firmware's job is **configuration only**. Actual Atari ST IKBD emula
 | --- | --- |
 | `main.c` | Power/clocks bring-up, flash layout asserts, settings init, hand off to `mngr_loop`. |
 | `mngr.c` | Wi-Fi mode selection (AP/STA), STA→AP fallback, httpd start, main poll loop. |
-| `network.c` | CYW43 init, AP setup with DHCP, STA connect (incl. BSSID→SSID resolution), scanning, mDNS, country/auth code translation, max-range radio profile. |
-| `mngr_httpd.c` | All CGI handlers, all SSI tag resolvers, JSON payload formatting, base64+url-decoding of POSTed config. |
+| `network.c` | CYW43 init, AP setup with DHCP, STA connect (incl. BSSID→SSID resolution), scanning, mDNS, max-range radio profile. |
+| `network_parse.c` | SDK-free: country code, BSSID and auth code translation for the CYW43 driver. Host-tested. |
+| `mngr_httpd.c` | All CGI handlers, all SSI tag resolvers, JSON payload formatting. |
+| `httpd_params.c` | SDK-free: URL/base64 decoding of `/saveparams.cgi`'s `json` parameter into settings writes, JSON string escaping. Host-tested. |
 | `btloop.c` | Bluepad32/BTstack glue: scan/discover/pair callbacks, device classification, pairing persistence in settings. |
 | `gconfig.c` | Single global `SettingsContext`, default key/value table, `PARAM_BOOT_FEATURE` handshake key. |
 | `settings/settings.c` | Magic-versioned flash-backed key/value store (generic, reusable). |
@@ -140,7 +144,7 @@ lwIP's bundled httpd, SSI + CGI. Templates and assets live in `fs/`. **`fsdata_s
 | URI | Function | Notes |
 | --- | --- | --- |
 | `/test.cgi` | `cgi_test` | Stub. |
-| `/saveparams.cgi` | `cgi_saveparams` | Accepts `?json=<url-encoded base64 JSON>` of `[{name,type,value},…]`. Writes each entry to settings via `settings_put_*` then `settings_save`. `USB_KB_LAYOUT` is force-lowercased. Special-cases `MODE` to clamp to 1 or 2 explicitly. |
+| `/saveparams.cgi` | `cgi_saveparams` | Accepts `?json=<url-encoded base64 JSON>` of `[{name,type,value},…]`. Writes each entry to settings via `settings_put_*` then `settings_save`. `USB_KB_LAYOUT` is force-lowercased. `MODE` is stored as given, not clamped; a value that is not a number is stored as 0 (native mode on Croissant). |
 | `/btlist.cgi` | `cgi_btlist` | Snapshot of discovered BT devices, returned as JSON. |
 | `/btstart.cgi` | `cgi_btstart` | `btloop_enable()` — first call also calls `uni_init()` (Bluepad32 init). |
 | `/btstop.cgi` | `cgi_btstop` | `btloop_disable()` (does not unload the stack). |

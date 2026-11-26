@@ -12,6 +12,7 @@
 #include "constants.h"
 #include "debug.h"
 #include "gconfig.h"
+#include "network_parse.h"
 #include "settings.h"
 
 #ifdef BLINK_H
@@ -47,12 +48,9 @@
 
 #define NETWORK_MAX_STRING_LENGTH 32
 
-#define NETWORK_MAC_SIZE 6
-
 #define MAX_NETWORKS 100
 #define MAX_SSID_LENGTH \
   36  // SSID can have up to 32 characters + null terminator + padding
-#define MAX_BSSID_LENGTH 20
 #define MAX_PASSWORD_LENGTH \
   68  // Password can have up to 64 characters + null terminator + padding
 #define WIFI_AP_NETMASK "255.255.255.0"
@@ -225,26 +223,6 @@ wifi_sta_conn_status_t network_wifiConnStatus(
  * @return Pointer to a string summarizing connection status.
  */
 char* network_wifiConnStatusStr();
-
-/**
- * @brief Converts a numeric WiFi authentication code into a descriptive string.
- *
- * Facilitates understanding of the authentication mode used.
- *
- * @param connect_code Numeric authentication code.
- * @return Pointer to a string with the full authentication type description.
- */
-const char* network_getAuthTypeString(uint16_t connect_code);
-
-/**
- * @brief Returns an abbreviated string for the WiFi authentication type.
- *
- * Useful when display area is limited.
- *
- * @param connect_code Numeric authentication code.
- * @return Pointer to a short string representing the authentication type.
- */
-const char* network_getAuthTypeStringShort(uint16_t connect_code);
 
 /**
  * @brief Retrieves the current IP address assigned to the network interface.

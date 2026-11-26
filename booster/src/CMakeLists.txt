@@ -174,6 +174,7 @@ target_sources(${PROJECT_NAME} PRIVATE
         mngr.c
         mngr_httpd.c
         network.c
+        network_parse.c
         version.c
         settings/settings.c
         cjson/cJSON.c
