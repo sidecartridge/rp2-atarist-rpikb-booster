@@ -37,7 +37,7 @@ jobs:
             libstdc++-arm-none-eabi-newlib
 
       - name: Install AtariST toolkit Docker image
-        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/install_atarist_toolkit_docker.sh | bash
+        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/v1.5.0/install_atarist_toolkit_docker.sh | bash
 
       - name: Build firmware
         run: ./build.sh pico2_w ${{ matrix.build_type }} final ${{ matrix.board_flavor }}
