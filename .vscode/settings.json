@@ -14,9 +14,7 @@
         }
     },
     "cmake.configureEnvironment": {
-        "STA_TEST_MODE": "1",
-        "STA_TEST_SSID": "REMOVED",
-        "STA_TEST_PASSWORD": "REMOVED"
+        "STA_TEST_MODE": "1"
     },
     "cmake.buildBeforeRun": true,
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
