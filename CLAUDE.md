@@ -220,6 +220,7 @@ RAM: 512 KB at `0x20000000`, scratch X/Y banks for stacks. **Note the LD file sa
 
 - `.github/workflows/build.yml`: PR + manual trigger. Matrix is {release,debug} × {croissant,souffle}. Always builds `final` (i.e. full merged image). Artifacts staged but not uploaded.
 - `.github/workflows/release.yml`: triggered on `v*` tags. Validates tag matches `version.txt` exactly, and runs `check_core_pin.sh`: the `rp2-atarist-rpikb` pin at the tagged commit must be the commit of the core repo's tag of the same version. Same matrix. Publishes to GitHub Releases (auto-generated notes) **and** uploads UF2s to S3 bucket `tosemulator.sidecartridge.com` via the AWS credentials in repo secrets.
+- `build_factory_uf2.py RELEASE_UF2` makes the Souffle factory image: the release UF2 with only its settings sector pre-filled (USB mode, `FACTORY_MODE=1`, the bench Wi-Fi from `factory.env` or `tools/dev/bench.env`). Local and by hand only, never in CI or a release: it carries the bench Wi-Fi password. It refuses unless Booster's and the core firmware's settings defaults have the same keys.
 - `make tag` (from root Makefile) runs `make check-core-pin` (`check_core_pin.sh`), then creates and pushes the tag for whatever `version.txt` says. So the core firmware is tagged and the submodule moved to that tag before this repo is tagged.
 
 ## Developer tools

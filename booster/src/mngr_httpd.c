@@ -17,6 +17,7 @@
 
 #include "btstack.h"
 #include "btstack_util.h"
+#include "build_id.h"
 #include "cjson/cJSON.h"
 #include "constants.h"
 #include "debug.h"
@@ -731,6 +732,47 @@ const char *cgi_factoryreset(int iIndex, int iNumParams, char *pcParam[],
 }
 
 /**
+ * @brief Factory test state and results, as JSON, for the hidden factory page
+ * and for bench scripts.
+ *
+ * FACTORY_RESULT is passed through as the core firmware wrote it
+ * ("v=1;pass=..;kbd=..;seen=..;held=..;vid=.."); the page decodes it.
+ */
+const char *cgi_factory(int iIndex, int iNumParams, char *pcParam[],
+                        char *pcValue[]) {
+  (void)iIndex;
+  (void)iNumParams;
+  (void)pcParam;
+  (void)pcValue;
+
+  SettingsContext *ctx = gconfig_getContext();
+  SettingsConfigEntry *mode = settings_find_entry(ctx, PARAM_FACTORY_MODE);
+  SettingsConfigEntry *result = settings_find_entry(ctx, PARAM_FACTORY_RESULT);
+  SettingsConfigEntry *wifi_mode = settings_find_entry(ctx, PARAM_WIFI_MODE);
+  SettingsConfigEntry *ssid = settings_find_entry(ctx, PARAM_WIFI_SSID);
+
+  // Static, not on the stack: the escaped copies can be six times longer.
+  static char result_escaped[(SETTINGS_MAX_VALUE_LENGTH * 6) + 1];
+  static char ssid_escaped[(SETTINGS_MAX_VALUE_LENGTH * 6) + 1];
+  json_escape_string(result ? result->value : "", result_escaped,
+                     sizeof(result_escaped));
+  json_escape_string(ssid ? ssid->value : "", ssid_escaped,
+                     sizeof(ssid_escaped));
+  ip_addr_t ip = network_getCurrentIp();
+
+  memset(httpd_json_payload, 0, sizeof(httpd_json_payload));
+  snprintf(httpd_json_payload, sizeof(httpd_json_payload),
+           "{\"factory_mode\":%d,\"result\":\"%s\",\"booster\":\"%s\","
+           "\"build\":\"%s\",\"wifi_mode\":\"%s\",\"ssid\":\"%s\","
+           "\"ip\":\"%s\"}",
+           mode ? atoi(mode->value) : 0, result_escaped, RELEASE_VERSION,
+           RELEASE_BUILD_ID,
+           (wifi_mode && atoi(wifi_mode->value) == 1) ? "STA" : "AP",
+           ssid_escaped, ipaddr_ntoa(&ip));
+  return "/json.shtml";
+}
+
+/**
  * @brief Array of CGI handlers wired into the booster HTTPD.
  *
  * Maps URI paths to the matching handler in this file.
@@ -744,7 +786,8 @@ static const tCGI cgi_handlers[] = {{"/test.cgi", cgi_test},
                                     {"/btclean.cgi", cgi_btclean},
                                     {"/btunpair.cgi", cgi_btunpair},
                                     {"/factoryreset.cgi",
-                                     cgi_factoryreset}};
+                                     cgi_factoryreset},
+                                    {"/factory.cgi", cgi_factory}};
 /**
  * @brief Initializes the HTTP server with optional SSI tags, CGI handlers, and
  * an SSI handler function.

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,=">
+    <title>Factory Test · <!--#TITLEHDR--></title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header class="header">
+        <h1><!--#TITLEHDR--></h1>
+    </header>
+
+    <main class="main-content">
+        <section class="content" id="factory-test">
+            <h2>Factory Test</h2>
+            <div id="verdict" class="banner banner-info" role="status" aria-live="polite">Reading the test result...</div>
+            <table id="details" class="pure-table pure-table-bordered" style="display: none;">
+                <tbody id="details-body"></tbody>
+            </table>
+            <h3 id="lines-title" style="display: none;">Joystick and mouse lines</h3>
+            <table id="lines" class="pure-table pure-table-bordered" style="display: none;">
+                <tbody id="lines-body"></tbody>
+            </table>
+            <p id="raw" class="helper-text"></p>
+            <div class="action-buttons">
+                <a class="btn btn-danger" href="/factoryreset.shtml">Factory reset</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2026 GOODDATA LABS SLU. All rights reserved.</p>
+    </footer>
+
+    <script>
+        (function () {
+            // seen bit n is GPIO (10 + n) on the Souffle joystick ports.
+            var LINES = ["JOY1 UP", "JOY1 DOWN", "JOY1 LEFT", "JOY1 RIGHT", "JOY1 FIRE", "JOY1 FIRE2",
+                         "JOY0 UP", "JOY0 DOWN", "JOY0 LEFT", "JOY0 RIGHT", "JOY0 FIRE", "JOY0 FIRE2"];
+
+            function row(body, label, value, ok) {
+                var tr = document.createElement("tr");
+                var th = document.createElement("th");
+                var td = document.createElement("td");
+                th.textContent = label;
+                td.textContent = value;
+                if (ok === true) td.className = "status-ok";
+                if (ok === false) td.className = "status-error";
+                tr.appendChild(th);
+                tr.appendChild(td);
+                body.appendChild(tr);
+            }
+
+            function parse(result) {
+                var fields = {};
+                (result || "").split(";").forEach(function (part) {
+                    var eq = part.indexOf("=");
+                    if (eq > 0) fields[part.slice(0, eq)] = part.slice(eq + 1);
+                });
+                return fields.v ? fields : null;
+            }
+
+            function verdict(type, text) {
+                var el = document.getElementById("verdict");
+                el.className = "banner banner-" + type;
+                el.textContent = text;
+            }
+
+            fetch("/factory.cgi")
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    var details = document.getElementById("details-body");
+                    var r = parse(data.result);
+                    if (!data.factory_mode && !r) {
+                        verdict("info", "Factory mode is off and there is no test result.");
+                    } else if (!r) {
+                        verdict("warning", "Factory mode is on; no test result yet.");
+                    } else if (r.pass === "1") {
+                        verdict("success", "PASS");
+                    } else {
+                        verdict("error", "FAIL");
+                    }
+                    row(details, "Factory mode", data.factory_mode ? "on" : "off");
+                    if (r) {
+                        row(details, "Keystrokes passed to the ST", r.kbd || "?");
+                        row(details, "USB keyboard (VID:PID)", r.vid || "?",
+                            r.vid ? r.vid !== "0000:0000" : undefined);
+                        row(details, "All lines held", (r.held || "?") + " ms");
+                        if (r.keys !== undefined) {
+                            // keys bit n = the n-th of a, b, c, d, e typed on the USB keyboard.
+                            var typed = parseInt(r.keys, 16) || 0, missing = [];
+                            ["a", "b", "c", "d", "e"].forEach(function (k, n) {
+                                if (!(typed >> n & 1)) missing.push(k);
+                            });
+                            row(details, "Keys a b c d e typed",
+                                missing.length ? "missing: " + missing.join(" ") : "all five",
+                                missing.length === 0);
+                        }
+                        var seen = parseInt(r.seen || "0", 16);
+                        var lines = document.getElementById("lines-body");
+                        LINES.forEach(function (name, n) {
+                            var ok = (seen >> n & 1) === 1;
+                            row(lines, name + " (GPIO " + (10 + n) + ")", ok ? "seen" : "never seen", ok);
+                        });
+                        document.getElementById("lines").style.display = "";
+                        document.getElementById("lines-title").style.display = "";
+                    }
+                    row(details, "Wi-Fi", data.wifi_mode + (data.ssid ? " " + data.ssid : "") +
+                        (data.ip && data.ip !== "0.0.0.0" ? ", " + data.ip : ""));
+                    row(details, "Booster", data.booster + ", build " + data.build);
+                    document.getElementById("details").style.display = "";
+                    document.getElementById("raw").textContent = data.result ? "Raw result: " + data.result : "";
+                })
+                .catch(function () {
+                    verdict("error", "Could not read the factory test result.");
+                });
+        })();
+    </script>
+</body>
+
+</html>
