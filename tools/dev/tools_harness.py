@@ -47,6 +47,10 @@ def main() -> int:
 
     cursor = LogCursor()
     rc, _ = swdpy("reset")
+    # Unless MODE is 255 the reset leaves the core firmware running: press
+    # CONFIG over SWD to come back into Booster.
+    rc_boot, _ = swdpy("boot", "booster")
+    rc |= rc_boot
     if debug:
         banner = cursor.wait(r"SidecarTridge IKBD Booster\. .*Build " +
                              re.escape(build_id), 20)
