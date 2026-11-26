@@ -90,6 +90,16 @@
                         row(details, "USB keyboard (VID:PID)", r.vid || "?",
                             r.vid ? r.vid !== "0000:0000" : undefined);
                         row(details, "All lines held", (r.held || "?") + " ms");
+                        if (r.keys !== undefined) {
+                            // keys bit n = the n-th of a, b, c, d, e typed on the USB keyboard.
+                            var typed = parseInt(r.keys, 16) || 0, missing = [];
+                            ["a", "b", "c", "d", "e"].forEach(function (k, n) {
+                                if (!(typed >> n & 1)) missing.push(k);
+                            });
+                            row(details, "Keys a b c d e typed",
+                                missing.length ? "missing: " + missing.join(" ") : "all five",
+                                missing.length === 0);
+                        }
                         var seen = parseInt(r.seen || "0", 16);
                         var lines = document.getElementById("lines-body");
                         LINES.forEach(function (name, n) {
