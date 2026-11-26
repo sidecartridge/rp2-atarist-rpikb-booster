@@ -71,3 +71,6 @@ tools/dev/sdk/
 tools/dev/logs/
 tools/dev/bench.env
 __pycache__/
+
+# Factory image: the bench Wi-Fi it carries
+factory.env
