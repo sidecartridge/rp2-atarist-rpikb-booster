@@ -1,10 +1,9 @@
 // units: booster/src/settings/settings.c tests/host/shim/host_flash.c
-/* Defect: load reads at most as many stored entries as the running firmware
- * has defaults (plus MAGICVERSION). A stored key the firmware does not know
- * still uses up one of those reads, so when it is stored before the known
- * keys, the last stored known key is never read and silently reverts to its
- * default. Both firmwares keep identical key sets (test_default_keys.py), so
- * this only bites if they drift, or after a key is removed. */
+/* A stored key the running firmware does not know is skipped without taking
+ * the place of one it knows: stored before the known keys, it does not stop
+ * the last of them from loading. Load reads until the first empty or invalid
+ * entry, up to the sector's capacity, not as many entries as it has
+ * defaults. */
 #include <string.h>
 
 #include "settings.h"

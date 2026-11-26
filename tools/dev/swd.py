@@ -968,9 +968,10 @@ def read_memories(ranges: list[tuple[int, int]]) -> list[bytes]:
 # The settings sector both firmwares share (GLOBAL_CONFIG in the linker
 # scripts). Entries are 127 bytes, back to back, unaligned: a 30-byte key, a
 # 1-byte type (the enum is packed to one byte by the ARM EABI) and a 96-byte
-# value, all NUL-padded strings; MAGICVERSION comes first. The firmware loads
-# as many entries as it has defaults and never clears the bytes after the
-# last one, so decoding stops at the first entry that is not one.
+# value, all NUL-padded strings; MAGICVERSION comes first. The firmware writes
+# zeros after the last entry and loads up to the first entry that is not one;
+# sectors saved by older builds hold RAM contents there, so decoding stops at
+# the first entry that is not one too.
 GLOBAL_CONFIG = 0x101FD000
 SETTINGS_SECTOR = 4096
 KEY_LEN, VALUE_LEN = 30, 96
