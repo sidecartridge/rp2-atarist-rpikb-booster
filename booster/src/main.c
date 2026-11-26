@@ -6,6 +6,7 @@
  * Description: C file that launches the ROM emulator
  */
 
+#include "build_id.h"
 #include "constants.h"
 #include "debug.h"
 #include "gconfig.h"
@@ -55,8 +56,9 @@ int main() {
   setvbuf(stdout, NULL, _IOFBF, 256);
 
   // Only startup information to display
-  DPRINTF("SidecarTridge IKBD Emulator. %s (%s). %s mode.\n\n", RELEASE_VERSION,
-          RELEASE_DATE, _DEBUG ? "DEBUG" : "RELEASE");
+  DPRINTF("SidecarTridge IKBD Booster. %s (%s). Build %s. %s mode.\n\n",
+          RELEASE_VERSION, RELEASE_DATE, RELEASE_BUILD_ID,
+          _DEBUG ? "DEBUG" : "RELEASE");
 
   // Show information about the frequency and voltage
   int current_clock_frequency_khz = MCU_CLOCK_FREQ_KHZ;
