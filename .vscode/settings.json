@@ -14,9 +14,7 @@
         }
     },
     "cmake.configureEnvironment": {
-        "STA_TEST_MODE": "1",
-        "STA_TEST_SSID": "CHISMEROUTER",
-        "STA_TEST_PASSWORD": "lucifer6"
+        "STA_TEST_MODE": "1"
     },
     "cmake.buildBeforeRun": true,
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
