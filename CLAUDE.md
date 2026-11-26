@@ -20,7 +20,7 @@ Top-level `build.sh <board_type> <build_type> [release_type] [board_flavor]`:
 
 Two important side effects of root `build.sh`:
 - `rm -rf build/` at the start.
-- Force-syncs `rp2-atarist-rpikb` to `origin/main` and **fails the build if HEAD ≠ origin/main**. Don't run it when the submodule has uncommitted/in-progress core-firmware work unless you've pushed it. `AGENTS.md` covers the non-destructive submodule rules in detail.
+- `git submodule update --init --recursive` checks out every submodule at the commit this repo pins, `rp2-atarist-rpikb` included. That pin (the gitlink) is what the core firmware builds from; no tag is needed to build. Don't run it when the submodule has uncommitted/in-progress core-firmware work. To build against new core work, push it to the core repo (any branch) and commit the new submodule pin here. `AGENTS.md` covers the non-destructive submodule rules in detail.
 
 Iterating on booster-only changes is faster via `cd booster && ./build.sh pico2_w release "" souffle` — same flags, skips the core firmware build/merge. Internally this delegates to CMake presets in `booster/src/CMakePresets.json` (`croissant-debug`, `souffle-debug`, `croissant-release`, `souffle-release`) and writes to `booster/build-<flavor>-<kind>/`, then copies `booster.uf2` to `booster/dist/`. `booster/build.sh` only wipes its own preset-specific build dir, so other-flavor caches survive.
 
@@ -33,7 +33,9 @@ cd booster/src
 cmake --preset souffle-release && cmake --build --preset souffle-release
 ```
 
-No test suite. Verification is "builds, produces UF2, no clang-tidy regressions in touched files." Lint config: `.clang-format` and `.clang-tidy` at repo root.
+Host unit tests: `make -C tests/host test known-bugs` builds Booster's pure logic (the web request decoding, the settings store, the Wi-Fi parameter parsing) with the host compiler under ASan and UBSan and runs it in seconds; CI runs it alongside the firmware matrix. It needs the `pico-sdk` submodule with its `lib/mbedtls` and `lib/cyw43-driver`, and `rp2-atarist-rpikb` (the settings key-set check). A `bug_*.c` test pins a defect the firmware still has and must fail until it is fixed, then it is renamed `test_*.c`. Logic worth testing lives in SDK-free units (`httpd_params.c`, `network_parse.c`) that the firmware links and the tests compile directly; `tests/host/shim/` stands in for the few SDK headers they include. See `tests/host/Makefile`.
+
+Verification is "host tests pass, builds, produces UF2, no clang-tidy regressions in touched files." Lint config: `.clang-format` and `.clang-tidy` at repo root.
 
 ## High-level architecture
 
@@ -47,8 +49,10 @@ The Booster firmware's job is **configuration only**. Actual Atari ST IKBD emula
 | --- | --- |
 | `main.c` | Power/clocks bring-up, flash layout asserts, settings init, hand off to `mngr_loop`. |
 | `mngr.c` | Wi-Fi mode selection (AP/STA), STA→AP fallback, httpd start, main poll loop. |
-| `network.c` | CYW43 init, AP setup with DHCP, STA connect (incl. BSSID→SSID resolution), scanning, mDNS, country/auth code translation, max-range radio profile. |
-| `mngr_httpd.c` | All CGI handlers, all SSI tag resolvers, JSON payload formatting, base64+url-decoding of POSTed config. |
+| `network.c` | CYW43 init, AP setup with DHCP, STA connect (incl. BSSID→SSID resolution), scanning, mDNS, max-range radio profile. |
+| `network_parse.c` | SDK-free: country code, BSSID and auth code translation for the CYW43 driver. Host-tested. |
+| `mngr_httpd.c` | All CGI handlers, all SSI tag resolvers, JSON payload formatting. |
+| `httpd_params.c` | SDK-free: URL/base64 decoding of `/saveparams.cgi`'s `json` parameter into settings writes, JSON string escaping. Host-tested. |
 | `btloop.c` | Bluepad32/BTstack glue: scan/discover/pair callbacks, device classification, pairing persistence in settings. |
 | `gconfig.c` | Single global `SettingsContext`, default key/value table, `PARAM_BOOT_FEATURE` handshake key. |
 | `settings/settings.c` | Magic-versioned flash-backed key/value store (generic, reusable). |
@@ -68,14 +72,19 @@ The Booster firmware's job is **configuration only**. Actual Atari ST IKBD emula
 
 ### Cross-firmware handoff (important — easy to miss)
 
-The Booster and the core IKBD firmware are two separate binaries occupying different flash regions in the same merged UF2. A small **boot selector** (built into the core firmware) reads `PARAM_BOOT_FEATURE` from the global config flash region at startup and jumps to whichever image that key points to (`"IKBD"` or `"BOOSTER"`).
+The Booster and the core IKBD firmware are two separate binaries occupying different flash regions in the same merged UF2. The **core firmware always starts first** (it is at `0x10000000`) and enters Booster with `jump_to_booster_app()` in two cases only:
 
-- The Booster sets `PARAM_BOOT_FEATURE=IKBD` *before* entering its loop. So on the **next** reset/power cycle, the system boots into the IKBD core firmware.
-- The web UI's "reboot to IKBD" button just triggers a reset — the work has already been done.
-- To get back into Booster, the user must press a board-specific button (Souffle: `CONFIG`) or hold reset for 10 s on Croissant. The boot selector reads that input and writes `PARAM_BOOT_FEATURE=BOOSTER` before jumping.
-- `gconfig_init()` takes an optional `currentAppName`. If the boot selector passes `"BOOSTER"` and the stored value doesn't match, it returns `GCONFIG_MISMATCHED_APP`. The Booster itself passes `NULL` so the check is bypassed.
+- `PARAM_MODE` is `255` (configuration), or missing or invalid, at boot. A fresh device, or one after a factory reset, has `MODE=255`, so it lands in Booster.
+- The CONFIG button (GPIO 9, pulled down, rising edge) is pressed while a mode loop runs (USB, Bluetooth or native, on both boards), or on Croissant the Atari reset is held for 10 s. No setting is written on the way.
 
-If you change `PARAM_BOOT_FEATURE` semantics, you must also update the boot selector in `rp2-atarist-rpikb/`.
+`PARAM_BOOT_FEATURE` is a check, not a selector:
+
+- The core firmware calls `gconfig_init("IKBD")`. If the stored `BOOT_FEATURE` is anything other than `"IKBD"`, that returns `GCONFIG_MISMATCHED_APP` and the core firmware **erases all settings and reboots**. Never write `BOOT_FEATURE=BOOSTER` to reach Booster: it wipes the board.
+- Booster passes `NULL` to `gconfig_init()` (no check) and writes `BOOT_FEATURE=IKBD` before entering its loop, so the next reset starts the core firmware cleanly.
+- `/factoryreset.cgi` writes `BOOT_FEATURE=BOOSTER` after erasing the settings; it works because the core firmware then sees the mismatch, erases again, reboots, finds `MODE=255` (the default) and jumps to Booster.
+- The web UI has no reboot button. Booster is left by a power cycle or reset: the core firmware then starts the saved mode, or comes straight back to Booster while `MODE` is 255.
+
+If you change how Booster is entered or what `PARAM_BOOT_FEATURE` means, update `rp2-atarist-rpikb/` too.
 
 ### Manager loop (`mngr.c`)
 
@@ -135,7 +144,7 @@ lwIP's bundled httpd, SSI + CGI. Templates and assets live in `fs/`. **`fsdata_s
 | URI | Function | Notes |
 | --- | --- | --- |
 | `/test.cgi` | `cgi_test` | Stub. |
-| `/saveparams.cgi` | `cgi_saveparams` | Accepts `?json=<url-encoded base64 JSON>` of `[{name,type,value},…]`. Writes each entry to settings via `settings_put_*` then `settings_save`. `USB_KB_LAYOUT` is force-lowercased. Special-cases `MODE` to clamp to 1 or 2 explicitly. |
+| `/saveparams.cgi` | `cgi_saveparams` | Accepts `?json=<url-encoded base64 JSON>` of `[{name,type,value},…]`. Writes each entry to settings via `settings_put_*` then `settings_save`. `USB_KB_LAYOUT` is force-lowercased. `MODE` is stored as given, not clamped; a value that is not a number is stored as 0 (native mode on Croissant). |
 | `/btlist.cgi` | `cgi_btlist` | Snapshot of discovered BT devices, returned as JSON. |
 | `/btstart.cgi` | `cgi_btstart` | `btloop_enable()` — first call also calls `uni_init()` (Bluepad32 init). |
 | `/btstop.cgi` | `cgi_btstop` | `btloop_disable()` (does not unload the stack). |
@@ -166,7 +175,7 @@ Custom in-RAM cache of a `SettingsConfigEntry[]` array (key/type/value triples),
 - Magic: 32-bit, formed as `(magic << 16) | version` = `0x12340001`. A `MAGICVERSION` entry is written *first* in the blob; `settingsLoadAllEntries` reads that, and if it doesn't match, the entire blob is treated as missing → defaults are loaded.
 - Save path: `flash_range_erase` of the whole sector, then `flash_range_program` of the cached blob. Interrupts disabled during the write (`save_and_disable_interrupts`). Always pass `disable_interrupts=true` from this codebase.
 - Defaults table: `defaultEntries[]` in `gconfig.c`. All keys defined as `#define PARAM_*` in `gconfig.h`.
-- Entry size: `SETTINGS_MAX_KEY_LENGTH=30` + 4 bytes type + `SETTINGS_MAX_VALUE_LENGTH=96`. Mind the 96-byte value cap when storing strings.
+- Entry size: 127 bytes, unaligned: `SETTINGS_MAX_KEY_LENGTH=30` + 1 byte type (the `SettingsDataType` enum is packed to one byte by the ARM EABI) + `SETTINGS_MAX_VALUE_LENGTH=96`. Mind the 96-byte value cap (95 characters and the NUL) when storing strings. On load, a stored key that is not in the running firmware's defaults table is dropped, and gone after the next save: keep Booster's and the core firmware's default key sets identical. Save writes zeros after the last entry; load reads until the first empty or invalid entry (a key with no terminator in its 30 bytes is invalid), up to the sector's capacity.
 - The `gconfig` context is a singleton (`gSettingsCtx`). All modules call `gconfig_getContext()`.
 
 The settings module also supports erase/deinit/reinit (used in the STA fallback in `main.c` recovery path). Note: there are *more* flash regions defined in `constants.h` than this code currently uses (`_storage_flash_start`, `_global_lookup_flash_start`); the lookup table is a sidecar feature managed by the boot selector, not by Booster.
@@ -214,8 +223,33 @@ RAM: 512 KB at `0x20000000`, scratch X/Y banks for stacks. **Note the LD file sa
 ## CI / Release
 
 - `.github/workflows/build.yml`: PR + manual trigger. Matrix is {release,debug} × {croissant,souffle}. Always builds `final` (i.e. full merged image). Artifacts staged but not uploaded.
-- `.github/workflows/release.yml`: triggered on `v*` tags. Validates tag matches `version.txt` exactly. Same matrix. Publishes to GitHub Releases (auto-generated notes) **and** uploads UF2s to S3 bucket `tosemulator.sidecartridge.com` via the AWS credentials in repo secrets.
-- `make tag` (from root Makefile) creates and pushes the tag for whatever `version.txt` says.
+- `.github/workflows/release.yml`: triggered on `v*` tags. Validates tag matches `version.txt` exactly, and runs `check_core_pin.sh`: the `rp2-atarist-rpikb` pin at the tagged commit must be the commit of the core repo's tag of the same version. Same matrix. Publishes to GitHub Releases (auto-generated notes) **and** uploads UF2s to S3 bucket `tosemulator.sidecartridge.com` via the AWS credentials in repo secrets. S3 is what the web installer downloads from: it answers with CORS headers, GitHub release assets do not. A last `webflash` job then runs `webflash_devices.py` on `devices.json` of `sidecartridge/rp-webusb-picoflash` (webflash.sidecartridge.com), adding the release and debug firmware of both boards at the top of their families, checks it with that repo's `tools/check-devices.py` and opens a PR there, with the `WEBFLASH_TOKEN` secret (a fine-grained token for that repository: contents and pull requests, write).
+- `build_factory_uf2.py RELEASE_UF2` makes the Souffle factory image: the release UF2 with only its settings sector pre-filled (USB mode, `FACTORY_MODE=1`, the bench Wi-Fi from `factory.env` or `tools/dev/bench.env`). Local and by hand only, never in CI or a release: it carries the bench Wi-Fi password. It refuses unless Booster's and the core firmware's settings defaults have the same keys. `factory_launch.py [VERSION]` is the bench command around it: in `dist/factory/` it uses or downloads the published Souffle release UF2 of VERSION (default `version.txt`) from S3, checks it is whole, makes the factory image if missing, and copies it onto one RP2350 in BOOTSEL (`--no-flash` stops after the images).
+- `make tag` (from root Makefile) runs `make check-core-pin` (`check_core_pin.sh`), then creates and pushes the tag for whatever `version.txt` says. So the core firmware is tagged and the submodule moved to that tag before this repo is tagged.
+
+## Developer tools
+
+`tools/dev/` (see its `README.md`) builds, flashes and checks a board through a Raspberry Pi Debug Probe wired to the Pico 2 W's SWD pins and its debug UART (GPIO 0/1, 921,600 baud in debug builds). Hardware checks go through these tools rather than by hand:
+
+- `tools/dev/flash.sh <souffle|croissant> <release|debug> [--full]` builds out of tree (never touching the submodules or `booster/build-*`), flashes only the images' own flash (settings and Bluetooth keys kept), runs Booster and verifies flash and build ID over SWD.
+- `tools/dev/console.py watch` captures the debug console; `since-boot`, `grep`, `wait` read it.
+- `tools/dev/swd.py` reads and drives the board without the firmware's help: `board`, `build-id`, `verify`, `settings [set]`, `boot booster|ikbd`, `clock`, `net`, `bt`, `wifi-bench`, `crash`, `heap`, `postmortem`, `reset`.
+- Harnesses (`tools_harness.py`, `boot_harness.py`, `web_harness.py`, `bt_harness.py`) print PASS/FAIL per check and write JSON reports to `tools/dev/logs/`. The web and Bluetooth harnesses use the bench Wi-Fi from the gitignored `tools/dev/bench.env` and restore the settings afterwards.
+- `measure_builds.sh` and `stackdepth.py` give sizes against the 760K slot, heap room and worst-case stack depth.
+
+Every build stamps its git commit in flash (`booster/src/build_id.cmake`, the `release_build_id` string), and the debug banner prints it. The OpenOCD these tools need is `../pico/openocd` (target names `rp2350.cm0`/`cm1`), not the older `../pico/openocd-rp2350` that `.vscode/launch.json` uses.
+
+## Release workflow
+
+These rules apply to every new version:
+
+- **A version starts with a release branch.** Create `release/vX.Y.Z` from `main`, where `vX.Y.Z` is exactly what `version.txt` will contain for that release.
+- **One branch per epic, cut from the release branch**, named `epic/NN-<slug>`. All work for the epic is committed there, including the `version.txt` bump in the first epic of a release.
+- **An epic's pull request targets `release/vX.Y.Z`, never `main`.** It is merged only after Diego has verified the epic on real hardware.
+- **Core firmware changes go through the submodule pin.** Work in `rp2-atarist-rpikb` is pushed there first; this repo then commits the new pin on the epic branch. Before the release, the core repo tags the same `vX.Y.Z` and the pin is moved to that tag's commit (`make check-core-pin` passes).
+- **`main` receives the release branch once**, when the whole version is done and verified. Only then is the tag pushed (`make tag`), which triggers the release workflow.
+- **Nothing committed or pushed may name an epic, story, iteration, decision (`D-NN`), constraint (`C-NN`) or the `docs/epics/` folder**: code comments, documentation, changelog, README, commit messages, PR descriptions. Epic branch names (`epic/NN-<slug>`) are the one exception. `docs/epics/` is gitignored, so a planning identifier tells a reader of the repository nothing and cannot be looked up. Write what the code does and why instead. Record the implementing commit hashes in the story's notes. Release check: `git grep -nIiE "EPIC-|STORY-|docs/epics|\b[CD]-[0-9]{2}\b" -- ':!CLAUDE.md' ':!AGENTS.md' ':!.gitignore'` comes back empty.
+- Commit only after Diego has approved the working-tree diff. Commit, push, open and merge pull requests only when Diego asks.
 
 ## Compile-time flags worth knowing
 
@@ -230,8 +264,8 @@ RAM: 512 KB at `0x20000000`, scratch X/Y banks for stacks. **Note the LD file sa
 
 ## Things that aren't obvious from any single file
 
-- **Three firmware images, one UF2.** Booster + core IKBD (and historically a `placeholder/`, currently commented out of the build) live at different flash origins and are merged. The boot selector chooses between them based on `PARAM_BOOT_FEATURE` in `GLOBAL_CONFIG_FLASH` (sector at `0x101FD000`).
-- **`PARAM_BOOT_FEATURE=IKBD` is always written by Booster before its loop starts.** This is intentional: every Booster session is followed by an IKBD session on the next reset. To stay in Booster, the user re-enters Booster mode through the board button (handled by the boot selector in `rp2-atarist-rpikb`).
+- **Three firmware images, one UF2.** Booster + core IKBD (and historically a `placeholder/`, currently commented out of the build) live at different flash origins and are merged. The core firmware starts first and jumps to Booster on `MODE=255` or the CONFIG button (see "Cross-firmware handoff").
+- **`PARAM_BOOT_FEATURE=IKBD` is always written by Booster before its loop starts.** This is intentional: every Booster session is followed by an IKBD session on the next reset, unless `MODE` is still 255. To get back into Booster, the user presses CONFIG (Souffle) or holds the Atari reset for 10 s (Croissant); the core firmware handles both.
 - **The settings flash region is shared between Booster and IKBD.** Both write to the same `GLOBAL_CONFIG_FLASH` sector. Coordination is by convention — only one of them runs at a time, so there's no concurrency, but if you change the schema in Booster you must update IKBD to read the new format.
 - **The `fs/` directory is the web UI source of truth.** Edit there, never touch `fsdata_srv.c`.
 - **`PICO_PLATFORM` is resolved from `BOARD_TYPE` (env), not the other way around.** `pico_w` → `rp2040`, `pico2_w` → `rp2350`. Any other value fails configure with a clear error.

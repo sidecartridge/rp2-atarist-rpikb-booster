@@ -64,3 +64,14 @@ term/atarist/term_firmware.h
 docs/epics/
 docs/known-issues/
 
+
+# Developer tools: builds, SDK worktrees, logs and the bench Wi-Fi
+tools/dev/builds/
+tools/dev/sdk/
+tools/dev/logs/
+tools/dev/bench.env
+__pycache__/
+
+# Factory image: the bench Wi-Fi it carries
+factory.env
+tests/host/build/

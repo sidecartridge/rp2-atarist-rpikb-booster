@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.3.0 (2026-11-26) - release
+
+Drag-and-drop installs finish on their own, USB keyboards can click the
+mouse, settings survive firmware updates reliably, and Souffle boards get a
+factory test. This release changes both the configuration app and the IKBD
+keyboard firmware.
+
+### What's new
+
+- **Mouse clicks from a USB keyboard.** As with Bluetooth keyboards,
+  ALT+Backspace now acts as ALT+Insert (the TOS left mouse click) and
+  ALT+Delete as ALT+CLR/HOME (the right click), so compact and Mac-style USB
+  keyboards without Insert or CLR/HOME can click without a mouse.
+- **New releases appear in the web installer.** Each release now proposes
+  its firmware, release and debug, for Croissant and Souffle, to the
+  installer at webflash.sidecartridge.com.
+- **Souffle factory test.** A factory image (built on the bench, never
+  published) starts the board in USB mode with a test that checks the USB
+  keyboard (the keys a to e) and all twelve joystick lines, stores the result
+  and hands over to the configuration app. A hidden page,
+  `http://souffle.local/factory.shtml`, shows the result. Normal boards are
+  unaffected: the test only runs when the factory image turns it on.
+
+### What's fixed
+
+- **Drag-and-drop installs restart the board by themselves.** Copying a
+  full `.uf2` image onto the board's USB drive used to leave it waiting with
+  the drive still mounted, so you had to unplug it. The image was a few bytes
+  short of its last flash page, which the boot ROM ignores; it now fills its
+  2 MB exactly, and the board restarts into the new firmware as soon as the
+  copy completes.
+- **Settings load reliably across firmware updates.** The settings were
+  saved with leftover memory after the last entry, and loading could read
+  past it. They are now saved with zeros after the last entry and loaded up
+  to that end marker, in both firmwares, so a firmware that adds settings (as
+  this one does) loads an older settings sector reliably, and a setting it
+  does not know no longer resets one it does.
+- **Saving settings from the web UI no longer overruns the stack.** Two
+  4 KB decode buffers moved off the processor stack.
+
+### Under the hood
+
+- Every build carries its git commit as a build ID, and debug builds print
+  it in their first console line; both firmwares' debug consoles run at
+  921,600 baud.
+- Developer tools in `tools/dev/` build, flash and check a board through a
+  Raspberry Pi Debug Probe, with repeatable hardware harnesses.
+- Host unit tests (`make -C tests/host test`) cover the settings store, the
+  web request decoding and the Wi-Fi parameter parsing under ASan and UBSan,
+  and run in CI.
+- The core firmware is built from the commit this repository pins, and a
+  release is refused unless that commit carries the core's tag of the same
+  version.
+- `factory_launch.py` makes the Souffle factory image from a published
+  release and installs it on a board in BOOTSEL.
+- The GPL-3.0 `LICENSE` file the README refers to is now in the repository.
+
 ## v1.2.0 (2026-06-15) - release
 
 A power-and-thermal pass on the keyboard firmware: the adapter does exactly

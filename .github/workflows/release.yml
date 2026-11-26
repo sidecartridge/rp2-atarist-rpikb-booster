@@ -35,6 +35,9 @@ jobs:
             exit 1
           fi
 
+      - name: Validate core firmware pin
+        run: bash check_core_pin.sh
+
       - name: Install the Pico toolchain
         run: |
           sudo DEBIAN_FRONTEND=noninteractive apt update
@@ -46,7 +49,7 @@ jobs:
             libstdc++-arm-none-eabi-newlib
 
       - name: Install AtariST toolkit Docker image
-        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/install_atarist_toolkit_docker.sh | bash
+        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/v1.5.0/install_atarist_toolkit_docker.sh | bash
 
       - name: Build firmware
         run: ./build.sh pico2_w ${{ matrix.build_type }} final ${{ matrix.board_flavor }}
@@ -127,3 +130,45 @@ jobs:
               ExtraArgs={"ContentType": content_type}
             )
           EOF
+
+  webflash:
+    name: webflash PR
+    runs-on: ubuntu-latest
+    needs: publish
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Checkout the webflash repository
+        uses: actions/checkout@v4
+        with:
+          repository: sidecartridge/rp-webusb-picoflash
+          token: ${{ secrets.WEBFLASH_TOKEN }}
+          path: webflash
+
+      - name: Add this release to devices.json and open the PR
+        env:
+          GH_TOKEN: ${{ secrets.WEBFLASH_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME}"
+          branch="ikbd-booster-${version}"
+          python3 webflash_devices.py "${version}" webflash/devices.json
+          cd webflash
+          if git diff --quiet; then
+            echo "devices.json already lists ${version}"
+            exit 0
+          fi
+          # Online: the new firmwares' URLs must answer, now that S3 has them.
+          python3 tools/check-devices.py devices.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${branch}"
+          git commit -am "Add the SidecarTridge keyboard emulator firmware ${version}"
+          git push --force origin "${branch}"
+          if [ "$(gh pr list --head "${branch}" --json number --jq length)" != "0" ]; then
+            echo "the PR for ${branch} is already open"
+            exit 0
+          fi
+          gh pr create --base main --head "${branch}" \
+            --title "Keyboard emulator firmware ${version}" \
+            --body "Adds the Croissant and Souffle keyboard emulator firmware ${version}, release and debug, at the top of their families. Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${version}"

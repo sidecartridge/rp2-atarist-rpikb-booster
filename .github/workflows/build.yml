@@ -8,6 +8,24 @@ permissions:
   contents: read
 
 jobs:
+  host-tests:
+    name: host tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Fetch what the tests read (mbedtls, the CYW43 driver, the core firmware)
+        run: |
+          git submodule update --init --depth 1 pico-sdk rp2-atarist-rpikb
+          git -C pico-sdk submodule update --init --depth 1 lib/mbedtls lib/cyw43-driver
+
+      - name: Host tests (Booster's pure logic, under ASan and UBSan)
+        run: make -C tests/host test
+
+      - name: Known bugs (each bug_*.c must still fail until its fix renames it)
+        run: make -C tests/host known-bugs
+
   build:
     name: ${{ matrix.build_type }} / ${{ matrix.board_flavor }}
     runs-on: ubuntu-latest
@@ -37,7 +55,7 @@ jobs:
             libstdc++-arm-none-eabi-newlib
 
       - name: Install AtariST toolkit Docker image
-        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/install_atarist_toolkit_docker.sh | bash
+        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/v1.5.0/install_atarist_toolkit_docker.sh | bash
 
       - name: Build firmware
         run: ./build.sh pico2_w ${{ matrix.build_type }} final ${{ matrix.board_flavor }}

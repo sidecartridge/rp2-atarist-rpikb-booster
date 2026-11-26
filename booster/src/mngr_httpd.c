@@ -17,16 +17,16 @@
 
 #include "btstack.h"
 #include "btstack_util.h"
-#include "cjson/cJSON.h"
+#include "build_id.h"
 #include "constants.h"
 #include "debug.h"
 #include "gconfig.h"
+#include "httpd_params.h"
 #include "hardware/watchdog.h"
 #include "include/btloop.h"
 #include "lwip/apps/httpd.h"
 #include "lwip/err.h"
 #include "lwip/pbuf.h"
-#include "mbedtls/base64.h"
 #include "network.h"
 #include "version.h"
 
@@ -91,152 +91,6 @@ static bool parse_addr_from_setting_value(const char *value, bd_addr_t addr) {
     return false;
   }
   return sscanf_bd_addr(addr_buf, addr) == 1;
-}
-
-static size_t json_escape_string(const char *src, char *dst, size_t dst_size) {
-  if (dst_size == 0) {
-    return 0;
-  }
-  if (src == NULL) {
-    dst[0] = '\0';
-    return 0;
-  }
-
-  size_t di = 0;
-  for (size_t si = 0; src[si] != '\0'; si++) {
-    const char *escaped = NULL;
-    switch (src[si]) {
-      case '\"':
-        escaped = "\\\"";
-        break;
-      case '\\':
-        escaped = "\\\\";
-        break;
-      case '\b':
-        escaped = "\\b";
-        break;
-      case '\f':
-        escaped = "\\f";
-        break;
-      case '\n':
-        escaped = "\\n";
-        break;
-      case '\r':
-        escaped = "\\r";
-        break;
-      case '\t':
-        escaped = "\\t";
-        break;
-      default:
-        break;
-    }
-
-    if (escaped != NULL) {
-      size_t escaped_len = strlen(escaped);
-      if (di + escaped_len >= dst_size) {
-        break;
-      }
-      memcpy(dst + di, escaped, escaped_len);
-      di += escaped_len;
-      continue;
-    }
-
-    unsigned char c = (unsigned char)src[si];
-    if (c < 0x20) {
-      if (di + 6 >= dst_size) {
-        break;
-      }
-      int written = snprintf(dst + di, dst_size - di, "\\u%04x", (unsigned)c);
-      if (written <= 0 || (size_t)written >= (dst_size - di)) {
-        break;
-      }
-      di += (size_t)written;
-      continue;
-    }
-
-    if (di + 1 >= dst_size) {
-      break;
-    }
-    dst[di++] = (char)c;
-  }
-
-  dst[di] = '\0';
-  return di;
-}
-
-/**
- * @brief Check if the string starts with specified characters
- * (case-insensitive).
- *
- * @param str The string to check.
- * @param chars The characters to match (e.g., "YyTt").
- * @return 1 if the string starts with any of the specified characters;
- * otherwise, 0.
- */
-static int starts_with_case_insensitive(const char *str, const char *chars) {
-  if (str == NULL || chars == NULL || str[0] == '\0') {
-    return 0;
-  }
-  char first_char = tolower((unsigned char)str[0]);
-  while (*chars) {
-    if (first_char == tolower((unsigned char)*chars)) {
-      return 1;
-    }
-    chars++;
-  }
-  return 0;
-}
-
-static int hex_to_int(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-  if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-  return -1;
-}
-
-static void to_lowercase_copy(const char *src, char *dst, size_t dst_len) {
-  if (dst_len == 0) {
-    return;
-  }
-  size_t i = 0;
-  for (; src[i] != '\0' && i + 1 < dst_len; i++) {
-    dst[i] = (char)tolower((unsigned char)src[i]);
-  }
-  dst[i] = '\0';
-}
-
-/**
- * @brief URL-decode a percent-encoded string.
- *
- * @param src Source string (null-terminated).
- * @param dst Destination buffer.
- * @param dst_len Length of destination buffer.
- * @return 0 on success, -1 on overflow or invalid hex.
- */
-static int url_decode(const char *src, char *dst, size_t dst_len) {
-  size_t si = 0;
-  size_t di = 0;
-  while (src[si] != '\0') {
-    if (di + 1 >= dst_len) {  // leave space for null terminator
-      return -1;
-    }
-    if (src[si] == '%' && src[si + 1] && src[si + 2]) {
-      int hi = hex_to_int(src[si + 1]);
-      int lo = hex_to_int(src[si + 2]);
-      if (hi < 0 || lo < 0) {
-        return -1;
-      }
-      dst[di++] = (char)((hi << 4) | lo);
-      si += 3;
-    } else if (src[si] == '+') {
-      dst[di++] = ' ';
-      si++;
-    } else {
-      dst[di++] = src[si++];
-    }
-  }
-  dst[di] = '\0';
-  return 0;
 }
 
 static char *get_status_message(mngr_httpd_response_status_t status,
@@ -327,127 +181,27 @@ static const char *cgi_test(int iIndex, int iNumParams, char *pcParam[],
 const char *cgi_saveparams(int iIndex, int iNumParams, char *pcParam[],
                           char *pcValue[]) {
   DPRINTF("cgi_saveparams called with index %d\n", iIndex);
-  int requested_mode = -1;
   for (size_t i = 0; i < iNumParams; i++) {
     /* check if parameter is "json" */
     if (strcmp(pcParam[i], "json") == 0) {
       DPRINTF("JSON encoded value: %s\n", pcValue[i]);
-      int ret;
-      size_t len = 0;
-      char url_decoded_param[4096];
-      char output_buffer[4096];
-      if (url_decode(pcValue[i], url_decoded_param,
-                     sizeof(url_decoded_param)) != 0) {
-        DPRINTF("Error URL-decoding base64 param\n");
-        response_status = MNGR_HTTPD_RESPONSE_BAD_REQUEST;
-        snprintf(httpd_response_message, sizeof(httpd_response_message), "%s",
-                 "Error URL-decoding parameter");
-        return "/response.shtml";
-      }
-      ret = mbedtls_base64_decode(
-          (unsigned char *)output_buffer,  // destination
-          sizeof(output_buffer),           // dest size
-          &len,                            // number of bytes decoded
-          (const unsigned char *)url_decoded_param, strlen(url_decoded_param));
-      // Place a null terminator at the end of the string
-      output_buffer[len] = '\0';
-      if (ret != 0) {
-        DPRINTF("Error decoding base64: %d\n", ret);
-        response_status = MNGR_HTTPD_RESPONSE_BAD_REQUEST;
+      // Static, not on the stack: core 0's stack has at most 8 KB (SCRATCH_Y
+      // and SCRATCH_X), and these two buffers alone are 8 KB. lwIP calls CGI
+      // handlers one at a time, so sharing them between calls is safe.
+      static char url_decoded_param[4096];
+      static char output_buffer[4096];
+      saveparams_result_t result = saveparams_apply(
+          gconfig_getContext(), pcValue[i], url_decoded_param,
+          sizeof(url_decoded_param), output_buffer, sizeof(output_buffer),
+          httpd_response_message, sizeof(httpd_response_message));
+      response_status = result == SAVEPARAMS_SAVED
+                            ? MNGR_HTTPD_RESPONSE_OK
+                            : MNGR_HTTPD_RESPONSE_BAD_REQUEST;
+      if (result == SAVEPARAMS_BAD_BASE64) {
         char detail[64] = {0};
-        snprintf(detail, sizeof(detail), "Error decoding base64: %d", ret);
+        snprintf(detail, sizeof(detail), "%s", httpd_response_message);
         snprintf(httpd_response_message, sizeof(httpd_response_message), "%s",
                  get_status_message(response_status, detail));
-      } else {
-        DPRINTF("Decoded value: %s\n", output_buffer);
-        // Parse the JSON object
-        bool valid_json = true;
-        cJSON *root = cJSON_Parse(output_buffer);
-        if (root == NULL) {
-          DPRINTF("Error parsing JSON\n");
-          response_status = MNGR_HTTPD_RESPONSE_BAD_REQUEST;
-          snprintf(httpd_response_message, sizeof(httpd_response_message),
-                   "Error parsing JSON");
-          valid_json = false;
-        } else {
-          // Iterate over the JSON array
-          cJSON *item = NULL;
-          cJSON_ArrayForEach(item, root) {
-            cJSON *name = cJSON_GetObjectItem(item, "name");
-            cJSON *type = cJSON_GetObjectItem(item, "type");
-            cJSON *value = cJSON_GetObjectItem(item, "value");
-
-            // Print each parameter
-            if (cJSON_IsString(name) && cJSON_IsString(type) &&
-                cJSON_IsString(value)) {
-              DPRINTF("Param Name: %s, Type: %s, Value: %s\n",
-                      name->valuestring, type->valuestring, value->valuestring);
-              if (strcasecmp(type->valuestring, "STRING") == 0) {
-                // Lowercase USB KB layout to keep stored value consistent
-                if (strcasecmp(name->valuestring, PARAM_USB_KB_LAYOUT) == 0) {
-                  char lower_buf[16];
-                  to_lowercase_copy(value->valuestring, lower_buf,
-                                    sizeof(lower_buf));
-                  settings_put_string(gconfig_getContext(), name->valuestring,
-                                      lower_buf);
-                  DPRINTF("Setting %s to %s saved (normalized lowercase).\n",
-                          name->valuestring, lower_buf);
-                } else {
-                  settings_put_string(gconfig_getContext(), name->valuestring,
-                                      value->valuestring);
-                  DPRINTF("Setting %s to %s saved.\n", name->valuestring,
-                          value->valuestring);
-                }
-              } else if (strcasecmp(type->valuestring, "INT") == 0) {
-                int int_value = atoi(value->valuestring);
-                if (strcasecmp(name->valuestring, PARAM_MODE) == 0) {
-                  requested_mode = int_value;
-                }
-                settings_put_integer(gconfig_getContext(), name->valuestring,
-                                     int_value);
-                DPRINTF("Setting %s to %d saved.\n", name->valuestring,
-                        int_value);
-              } else if (strcasecmp(type->valuestring, "BOOL") == 0) {
-                // Check if the value starts with "Y", "y", "T", or "t"
-                int bool_value =
-                    starts_with_case_insensitive(value->valuestring, "YyTt");
-                settings_put_bool(gconfig_getContext(), name->valuestring,
-                                  bool_value);
-                DPRINTF("Setting %s to %s saved.\n", name->valuestring,
-                        bool_value ? "true" : "false");
-              } else {
-                DPRINTF("Invalid parameter type in JSON\n");
-                response_status = MNGR_HTTPD_RESPONSE_BAD_REQUEST;
-                snprintf(httpd_response_message, sizeof(httpd_response_message),
-                         "Invalid parameter type in JSON");
-                valid_json = false;
-              }
-            } else {
-              DPRINTF("Invalid parameter structure in JSON\n");
-              response_status = MNGR_HTTPD_RESPONSE_BAD_REQUEST;
-              snprintf(httpd_response_message, sizeof(httpd_response_message),
-                       "Invalid parameter structure in JSON");
-              valid_json = false;
-            }
-          }
-
-          // Free the parsed JSON object
-          cJSON_Delete(root);
-
-          if (valid_json) {
-            if (requested_mode == 1 || requested_mode == 2) {
-              settings_put_integer(gconfig_getContext(), PARAM_MODE,
-                                   requested_mode);
-              DPRINTF("Setting %s to %d saved (selected mode).\n", PARAM_MODE,
-                      requested_mode);
-            }
-            settings_save(gconfig_getContext(), true);
-            DPRINTF("Settings saved\n");
-            response_status = MNGR_HTTPD_RESPONSE_OK;
-            snprintf(httpd_response_message, sizeof(httpd_response_message),
-                     "");
-          }
-        }
       }
       return "/response.shtml";
     }
@@ -728,6 +482,47 @@ const char *cgi_factoryreset(int iIndex, int iNumParams, char *pcParam[],
 }
 
 /**
+ * @brief Factory test state and results, as JSON, for the hidden factory page
+ * and for bench scripts.
+ *
+ * FACTORY_RESULT is passed through as the core firmware wrote it
+ * ("v=1;pass=..;kbd=..;seen=..;held=..;vid=.."); the page decodes it.
+ */
+const char *cgi_factory(int iIndex, int iNumParams, char *pcParam[],
+                        char *pcValue[]) {
+  (void)iIndex;
+  (void)iNumParams;
+  (void)pcParam;
+  (void)pcValue;
+
+  SettingsContext *ctx = gconfig_getContext();
+  SettingsConfigEntry *mode = settings_find_entry(ctx, PARAM_FACTORY_MODE);
+  SettingsConfigEntry *result = settings_find_entry(ctx, PARAM_FACTORY_RESULT);
+  SettingsConfigEntry *wifi_mode = settings_find_entry(ctx, PARAM_WIFI_MODE);
+  SettingsConfigEntry *ssid = settings_find_entry(ctx, PARAM_WIFI_SSID);
+
+  // Static, not on the stack: the escaped copies can be six times longer.
+  static char result_escaped[(SETTINGS_MAX_VALUE_LENGTH * 6) + 1];
+  static char ssid_escaped[(SETTINGS_MAX_VALUE_LENGTH * 6) + 1];
+  json_escape_string(result ? result->value : "", result_escaped,
+                     sizeof(result_escaped));
+  json_escape_string(ssid ? ssid->value : "", ssid_escaped,
+                     sizeof(ssid_escaped));
+  ip_addr_t ip = network_getCurrentIp();
+
+  memset(httpd_json_payload, 0, sizeof(httpd_json_payload));
+  snprintf(httpd_json_payload, sizeof(httpd_json_payload),
+           "{\"factory_mode\":%d,\"result\":\"%s\",\"booster\":\"%s\","
+           "\"build\":\"%s\",\"wifi_mode\":\"%s\",\"ssid\":\"%s\","
+           "\"ip\":\"%s\"}",
+           mode ? atoi(mode->value) : 0, result_escaped, RELEASE_VERSION,
+           RELEASE_BUILD_ID,
+           (wifi_mode && atoi(wifi_mode->value) == 1) ? "STA" : "AP",
+           ssid_escaped, ipaddr_ntoa(&ip));
+  return "/json.shtml";
+}
+
+/**
  * @brief Array of CGI handlers wired into the booster HTTPD.
  *
  * Maps URI paths to the matching handler in this file.
@@ -741,7 +536,8 @@ static const tCGI cgi_handlers[] = {{"/test.cgi", cgi_test},
                                     {"/btclean.cgi", cgi_btclean},
                                     {"/btunpair.cgi", cgi_btunpair},
                                     {"/factoryreset.cgi",
-                                     cgi_factoryreset}};
+                                     cgi_factoryreset},
+                                    {"/factory.cgi", cgi_factory}};
 /**
  * @brief Initializes the HTTP server with optional SSI tags, CGI handlers, and
  * an SSI handler function.
