@@ -82,7 +82,7 @@ The Booster and the core IKBD firmware are two separate binaries occupying diffe
 - The core firmware calls `gconfig_init("IKBD")`. If the stored `BOOT_FEATURE` is anything other than `"IKBD"`, that returns `GCONFIG_MISMATCHED_APP` and the core firmware **erases all settings and reboots**. Never write `BOOT_FEATURE=BOOSTER` to reach Booster: it wipes the board.
 - Booster passes `NULL` to `gconfig_init()` (no check) and writes `BOOT_FEATURE=IKBD` before entering its loop, so the next reset starts the core firmware cleanly.
 - `/factoryreset.cgi` writes `BOOT_FEATURE=BOOSTER` after erasing the settings; it works because the core firmware then sees the mismatch, erases again, reboots, finds `MODE=255` (the default) and jumps to Booster.
-- The web UI's "reboot to IKBD" button just triggers a reset.
+- The web UI has no reboot button. Booster is left by a power cycle or reset: the core firmware then starts the saved mode, or comes straight back to Booster while `MODE` is 255.
 
 If you change how Booster is entered or what `PARAM_BOOT_FEATURE` means, update `rp2-atarist-rpikb/` too.
 
