@@ -52,7 +52,8 @@ def main() -> int:
               and b"Redirecting" in body, str(status))
 
         for path, keys in (("/btpairings.cgi", {"keyboard", "mouse", "gamepad"}),
-                           ("/btlist.cgi", {"devices"})):
+                           ("/btlist.cgi", {"devices"}),
+                           ("/factory.cgi", {"factory_mode", "result", "build"})):
             status, body, _ = bench.get(path)
             data = json_body(body)
             check(f"GET {path} answers JSON with {', '.join(sorted(keys))}",
