@@ -169,10 +169,12 @@ add_executable(${PROJECT_NAME}
 target_sources(${PROJECT_NAME} PRIVATE
         btloop.c
         gconfig.c
+        httpd_params.c
         lwipopts.h
         mngr.c
         mngr_httpd.c
         network.c
+        network_parse.c
         version.c
         settings/settings.c
         cjson/cJSON.c

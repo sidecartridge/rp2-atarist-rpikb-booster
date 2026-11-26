@@ -74,3 +74,4 @@ __pycache__/
 
 # Factory image: the bench Wi-Fi it carries
 factory.env
+tests/host/build/
