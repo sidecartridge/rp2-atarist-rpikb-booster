@@ -1,11 +1,11 @@
 // units: booster/src/settings/settings.c tests/host/shim/host_flash.c
-/* Defect, in two halves. settings_save() programs the whole sector from a
- * malloc() buffer, so the bytes after the last entry are whatever RAM held.
- * And when the running firmware has more defaults than the stored settings
- * have entries (any upgrade that adds a key), load reads that tail as one
- * more entry: strlen() on its key, which need not end within its 30 bytes,
- * reads past the 127-byte entry. The tail is set here to such bytes, 'A's
- * with no terminator, as RAM could leave it. */
+/* After the last entry, settings_save() leaves zeros or erased flash, not
+ * the RAM contents of its buffer. And when the running firmware has more
+ * defaults than the stored settings have entries (any upgrade that adds a
+ * key), load does not read whatever follows the last entry as one more: a
+ * key with no terminator inside its 30 bytes ends the entries. The tail is
+ * set here to such bytes, 'A's with no terminator, as an older firmware's
+ * save could have left it. */
 #include <string.h>
 
 #include "settings.h"
