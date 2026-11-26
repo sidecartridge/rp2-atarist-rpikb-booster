@@ -38,7 +38,7 @@ UF2_MAGIC_END     = 0x0AB16F30  # Typical trailing marker
 UF2_IGNORE_ADDR_FROM = 0x10FFFF00
 
 FLASH_BASE_ADDR   = 0x10000000
-FLASH_END_ADDR    = 0x10200000  # Inclusive end address for this build
+FLASH_END_ADDR    = 0x10200000  # First address past the 2 MB this build fills
 
 # ────────── UF2 block helper ──────────
 class UF2Block:
@@ -161,7 +161,7 @@ def main() -> None:
     if first_end >= second_start:
         sys.exit("The first UF2 overlaps or does not precede the second UF2. Aborting.")
 
-    if second_end > FLASH_END_ADDR:
+    if second_end >= FLASH_END_ADDR:
         sys.exit("Second UF2 exceeds 2 MB flash size.")
 
     combined: List[UF2Block] = []
@@ -185,10 +185,13 @@ def main() -> None:
     combined.extend(second_blocks)
 
     # 6. Zero-fill after second up to flash end
-    if second_end < FLASH_END_ADDR:
+    # Up to the last byte below FLASH_END_ADDR: every block a whole 256 bytes.
+    # The bootrom ignores a block that is not, never counts the download as
+    # complete, and so does not reboot after a drag-and-drop.
+    if second_end < FLASH_END_ADDR - 1:
         tail_blocks = create_zero_blocks(
             second_end + 1,
-            FLASH_END_ADDR,
+            FLASH_END_ADDR - 1,
             flags=first_blocks[0].flags,
             file_container=first_blocks[0].file_container,
         )
