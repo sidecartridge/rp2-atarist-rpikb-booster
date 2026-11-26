@@ -91,6 +91,61 @@ Notes:
   - `croissant-debug`, `souffle-debug`, `croissant-release`, `souffle-release`
 - The merged image step is skipped when `release_type` is omitted.
 
+## Souffle factory test
+
+A bench check for newly assembled Souffle boards: it installs a published
+release with a factory test switched on, which checks the USB keyboard port
+and all twelve joystick and mouse lines, then leaves a normal Souffle behind
+after a factory reset. Croissant has no factory test.
+
+You need:
+- A clone of this repository and Python 3 (no other packages).
+- The bench Wi-Fi the tested board joins to show its result, in `factory.env`
+  at the repository root (gitignored):
+  ```
+  FACTORY_WIFI_SSID=<network>
+  FACTORY_WIFI_PASSWORD=<password>
+  FACTORY_WIFI_AUTH=5        # optional: 5 WPA2-AES (default)
+  FACTORY_WIFI_COUNTRY=ES    # optional: XX (worldwide) by default
+  ```
+  Without it, `tools/dev/bench.env` (`BENCH_WIFI_*`) is used.
+- A USB keyboard, the joystick-port test harness that holds all twelve lines
+  low, and an Atari Mega ST or Mega STE to power the board.
+
+Steps:
+
+1. Run the launcher. It takes the version from `version.txt`, or the one you
+   give it:
+   ```sh
+   python3 factory_launch.py           # or: python3 factory_launch.py v1.3.0
+   ```
+   In `dist/factory/` it downloads the published Souffle release image (or
+   uses the one already there), checks it is complete, and makes the factory
+   image next to it. Then it waits for a board.
+2. Hold BOOTSEL on the Souffle while plugging its micro-USB into the computer.
+   The launcher copies the factory image onto the board's drive, and the board
+   restarts by itself as soon as the copy completes.
+3. Unplug the micro-USB and connect the Souffle to the Mega ST(E). On
+   micro-USB power alone the USB-A port is unpowered, so the keyboard would
+   not work.
+4. Plug the USB keyboard into the USB-A port and the harness into the joystick
+   ports, and power on the computer. Type `a`, `b`, `c`, `d` and `e` on the
+   keyboard, and leave the harness in for at least 10 seconds. Do not press
+   CONFIG: that ends the test as a failure.
+5. Once both checks have passed, the board saves the result and starts the
+   configuration app on the bench Wi-Fi. From a computer on that network, open
+   `http://souffle.local/factory.shtml`: it shows PASS or FAIL, the keys
+   typed, the keyboard's USB ID, how long the lines were held, and each line.
+6. Press **Factory reset** on that page and confirm. The board erases the factory
+   settings and the bench Wi-Fi and comes back as a new Souffle, on its own
+   access point.
+
+For the next board, run the launcher again: it reuses both images in
+`dist/factory/`. Options: `--dir DIR` keeps the images elsewhere,
+`--no-flash` only makes them, and `--timeout S` waits longer than 300 seconds
+for a board in BOOTSEL. The factory image carries the bench Wi-Fi password:
+keep it on the bench, never publish or commit it.
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0. See the LICENSE file for details.
