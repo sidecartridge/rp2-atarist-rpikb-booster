@@ -919,3 +919,14 @@ table.pure-table.pure-table-bordered tbody tr:hover {
         max-width: 100%;
     }
 }
+
+/* Factory test page: a check's outcome */
+.status-ok {
+  color: #065f46; /* Dark green, as .banner-success */
+  font-weight: bold;
+}
+
+.status-error {
+  color: #b91c1c; /* Dark red, as .banner-error */
+  font-weight: bold;
+}
