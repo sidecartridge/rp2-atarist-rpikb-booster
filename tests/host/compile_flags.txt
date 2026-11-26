@@ -1,0 +1,16 @@
+-std=gnu11
+-fshort-enums
+-DBOARD_TARGET=2
+-DPICO_RP2350=1
+-DMBEDTLS_CONFIG_FILE="mbedtls_config.h"
+-Ishim
+-isystem
+../../booster/src/include
+-isystem
+../../booster/src/settings
+-isystem
+../../booster/src
+-isystem
+../../pico-sdk/lib/mbedtls/include
+-isystem
+../../pico-sdk/lib/cyw43-driver/src
